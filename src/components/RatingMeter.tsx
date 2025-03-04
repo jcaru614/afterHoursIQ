@@ -6,11 +6,11 @@ type RatingMeterProps = {
 
 const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 	const normalizedScore = score === 0 ? 0 : Math.max(1, Math.min(5, score));
-	const needleAngle = normalizedScore === 0 ? -90 : ((normalizedScore - 1) / 4) * 180 - 90; 
+	const needleAngle = normalizedScore === 0 ? -90 : ((normalizedScore - 1) / 4) * 180 - 90;
 
 	let action = '';
 	if (normalizedScore === 0) {
-		action = 'No Report'; 
+		action = 'No Report';
 	} else if (normalizedScore === 1) {
 		action = 'Strong Short';
 	} else if (normalizedScore === 2) {

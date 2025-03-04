@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@trigger.dev/sdk": "^3.3.16",
+    "axios": "^1.8.1",
     "next": "15.2.1",
     "openai": "^4.86.1",
     "react": "^19.0.0",
