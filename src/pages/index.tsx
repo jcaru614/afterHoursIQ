@@ -8,7 +8,7 @@ export default function Home() {
 				<p className='text-lg text-white-600 mb-6'>
 					Your AI-powered guide to stock performance after hours
 				</p>
-				<RatingMeter score={3} />
+				<RatingMeter score={0} />
 			</div>
 		</div>
 	);
