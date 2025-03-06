@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { RatingMeter, ReportSummary } from '@/components';
+import { useEffect, useState } from 'react';
+import { RatingMeter, ReportSummary, Alert } from '@/components';
 import axios from 'axios';
+import debounce from 'lodash/debounce';
 
 export default function Home() {
 	const [url, setUrl] = useState('');
@@ -9,7 +10,8 @@ export default function Home() {
 	const [isScanning, setIsScanning] = useState(false);
 	const [quarterError, setQuarterError] = useState('');
 	const [yearError, setYearError] = useState('');
-
+	const [rating, setRating] = useState(0);
+	const [summary, setSummary] = useState('');
 	const currentYear = new Date().getFullYear();
 	const validYears = [currentYear, currentYear - 1].map(String);
 
@@ -27,16 +29,28 @@ export default function Home() {
 		}
 	};
 
+	useEffect(() => {
+		if (year) {
+			debouncedValidateYear(year);
+		}
+		return () => {
+			debouncedValidateYear.cancel();
+		};
+	}, [year]);
+
+	const debouncedValidateYear = debounce((value: string) => {
+		if (value.length === 4 && !validYears.includes(value)) {
+			setYearError(`Year must be ${currentYear} or ${currentYear - 1}`);
+		} else if (value.length !== 4) {
+			setYearError('Year must be 4 digits');
+		} else {
+			setYearError('');
+		}
+	}, 2000);
+
 	const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const value = e.target.value;
-		if (/^\d{0,4}$/.test(value)) {
-			setYear(value);
-			if (value.length === 4 && !validYears.includes(value)) {
-				setYearError(`Year must be ${currentYear} or ${currentYear - 1}`);
-			} else {
-				setYearError('');
-			}
-		}
+		setYear(value);
 	};
 
 	const handleStartScanning = async () => {
@@ -55,12 +69,13 @@ export default function Home() {
 
 		setIsScanning(true);
 		try {
-			const response = await axios.post('/api/trigger/fetchReport', {
-				url,
-				quarter,
-				year,
-			});
-			console.log('Report fetched:', response.data);
+			const { data } = await axios.post(
+				'/api/trigger/fetchReport',
+				{ url, quarter, year },
+				{ headers: { 'Content-Type': 'application/json' } }
+			);
+			setRating(data.rating);
+			setSummary(data.summary);
 		} catch (error) {
 			console.error('Error fetching the report:', error);
 		} finally {
@@ -75,7 +90,6 @@ export default function Home() {
 				<p className='text-lg text-white-600 mb-6'>
 					Your AI-powered guide to stock performance after hours
 				</p>
-
 				<div className='mb-4 flex flex-col items-center'>
 					<input
 						type='url'
@@ -119,13 +133,13 @@ export default function Home() {
 						{isScanning ? 'Scanning...' : 'Start Scanning'}
 					</button>
 				</div>
-
 				<div className='mt-6 flex flex-col items-center'>
-					<RatingMeter score={2} />
-					<div className='mt-4'>
-						<ReportSummary score={4} />
+					<RatingMeter score={rating} />
+					<div className='mt-10'>
+						<ReportSummary summary={summary} />
 					</div>
 				</div>
+				<Alert rating={rating} />
 			</div>
 		</div>
 	);
