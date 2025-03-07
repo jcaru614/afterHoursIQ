@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useEffect, useState } from 'react';
 import { RatingMeter, ReportSummary, Alert } from '@/components';
 import axios from 'axios';
@@ -69,13 +70,11 @@ export default function Home() {
 
 		setIsScanning(true);
 		try {
-			const { data } = await axios.post(
-				'/api/trigger/fetchReport',
-				{ url, quarter, year },
-				{ headers: { 'Content-Type': 'application/json' } }
-			);
-			setRating(data.rating);
-			setSummary(data.summary);
+			const { data } = await axios.post('/api/trigger/startScanning', { url, quarter, year });
+
+			console.log('data ', data);
+			// setRating(data.rating);
+			// setSummary(data.summary);
 		} catch (error) {
 			console.error('Error fetching the report:', error);
 		} finally {

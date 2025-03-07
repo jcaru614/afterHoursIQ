@@ -76,7 +76,7 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		const rating = ratingMatch ? ratingMatch[1] : 'No rating found';
 
 		const summary = responseContent.replace(`Rating: ${rating}`, '').trim();
-
+		console.log('rating and summary ', rating, summary);
 		return res.status(200).json({ rating, summary });
 	} catch (error) {
 		console.error('Error:', error);
