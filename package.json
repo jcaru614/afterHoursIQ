@@ -9,18 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "3.3.17",
+    "@reduxjs/toolkit": "^2.6.1",
     "axios": "^1.8.1",
     "lodash": "^4.17.21",
     "next": "15.2.1",
     "openai": "^4.86.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-redux": "^9.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@trigger.dev/build": "3.3.17",
     "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -1,20 +1,23 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useEffect, useState } from 'react';
 import { RatingMeter, ReportSummary, Alert } from '@/components';
 import axios from 'axios';
 import debounce from 'lodash/debounce';
+import { useDispatch, useSelector } from 'react-redux';
+import { setReportData } from '@/redux/slice';
+import { RootState } from '@/redux/store';
 
 export default function Home() {
+	const dispatch = useDispatch();
 	const [url, setUrl] = useState('');
 	const [quarter, setQuarter] = useState('');
 	const [year, setYear] = useState('');
 	const [isScanning, setIsScanning] = useState(false);
 	const [quarterError, setQuarterError] = useState('');
 	const [yearError, setYearError] = useState('');
-	const [rating, setRating] = useState(0);
-	const [summary, setSummary] = useState('');
 	const currentYear = new Date().getFullYear();
 	const validYears = [currentYear, currentYear - 1].map(String);
+
+	const { rating, summary } = useSelector((state: RootState) => state.slice);
 
 	const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setUrl(e.target.value);
@@ -70,11 +73,10 @@ export default function Home() {
 
 		setIsScanning(true);
 		try {
-			const { data } = await axios.post('/api/trigger/startScanning', { url, quarter, year });
+			const { data } = await axios.post('/api/fetchReport', { url, quarter, year });
 
 			console.log('data ', data);
-			// setRating(data.rating);
-			// setSummary(data.summary);
+			dispatch(setReportData({ rating: data.rating, summary: data.summary }));
 		} catch (error) {
 			console.error('Error fetching the report:', error);
 		} finally {
