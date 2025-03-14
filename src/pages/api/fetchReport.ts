@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
-// import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
+import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
 
 const checkReportAvailability = async (url: string) => {
 	try {
@@ -59,18 +59,38 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		return res.status(400).json({ error: 'URL is required' });
 	}
 
-	const quarterMap: { [key: number]: string } = {
+	const quarterNameMap: { [key: number]: string } = {
 		1: 'first',
 		2: 'second',
 		3: 'third',
 		4: 'fourth',
 	};
 
-	if (!quarterMap[quarter]) {
+	const quarterNumberMap: { [key: number]: string } = {
+		1: 'q1',
+		2: 'q2',
+		3: 'q3',
+		4: 'q4',
+	};
+
+	if (!quarterNameMap[quarter] || !quarterNumberMap[quarter]) {
 		return res.status(400).json({ error: 'Invalid quarter. It should be between 1 and 4.' });
 	}
 
-	let predictedUrl = url.replace(/(first|second|third|fourth)/, quarterMap[quarter]);
+	let predictedUrl = url;
+
+	const quarterNames = ['first', 'second', 'third', 'fourth'];
+	const containsQuarterName = quarterNames.some((name) => url.includes(name));
+	const containsQuarterNumber = /q[1-4]/.test(url);
+
+	if (containsQuarterName) {
+		predictedUrl = url.replace(/(first|second|third|fourth)/, quarterNameMap[quarter]);
+	} else if (containsQuarterNumber) {
+		predictedUrl = url.replace(/q[1-4]/, quarterNumberMap[quarter]);
+	} else {
+		console.log('URL format not recognized for quarter; further analysis needed');
+	}
+
 	predictedUrl = predictedUrl.replace(/\d{4}/, year);
 
 	console.log('Predicted URL:', predictedUrl);
@@ -92,41 +112,40 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		if (!reportText) {
 			return res.status(500).json({ error: 'Failed to extract report text' });
 		}
-		// console.log('report text ', reportText);
-		return res.status(200).json(reportText);
-		// const openAIResponse = await axios.post(
-		// 	'https://api.openai.com/v1/chat/completions',
-		// 	{
-		// 		model: 'gpt-4',
-		// 		messages: [
-		// 			{
-		// 				role: 'system',
-		// 				content: SYSTEM_PROMPT,
-		// 			},
-		// 			{
-		// 				role: 'user',
-		// 				content: USER_PROMPT(reportText),
-		// 			},
-		// 		],
-		// 		temperature: 0.7,
-		// 	},
-		// 	{
-		// 		headers: {
-		// 			Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-		// 			'Content-Type': 'application/json',
-		// 		},
-		// 	}
-		// );
 
-		// const responseContent = openAIResponse.data.choices[0]?.message?.content || 'AI analysis failed.';
+		const openAIResponse = await axios.post(
+			'https://api.openai.com/v1/chat/completions',
+			{
+				model: 'gpt-4',
+				messages: [
+					{
+						role: 'system',
+						content: SYSTEM_PROMPT,
+					},
+					{
+						role: 'user',
+						content: USER_PROMPT(reportText),
+					},
+				],
+				temperature: 0.7,
+			},
+			{
+				headers: {
+					Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+					'Content-Type': 'application/json',
+				},
+			}
+		);
 
-		// const ratingMatch = responseContent.match(/Rating: (\d+)/);
-		// const rating = ratingMatch ? ratingMatch[1] : 'No rating found';
+		const responseContent = openAIResponse.data.choices[0]?.message?.content || 'AI analysis failed.';
 
-		// const summary = responseContent.replace(`Rating: ${rating}`, '').trim();
-		// console.log('Rating and Summary:', rating, summary);
+		const ratingMatch = responseContent.match(/Rating: (\d+)/);
+		const rating = ratingMatch ? ratingMatch[1] : 'No rating found';
 
-		// return res.status(200).json({ rating, summary });
+		const summary = responseContent.replace(`Rating: ${rating}`, '').trim();
+		console.log('Rating and Summary:', rating, summary);
+
+		return res.status(200).json({ rating, summary });
 	} catch (error) {
 		console.error('Error:', error);
 		return res.status(500).json({ error: 'Failed to process the report' });
