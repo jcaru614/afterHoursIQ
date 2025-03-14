@@ -140,12 +140,29 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		const responseContent = openAIResponse.data.choices[0]?.message?.content || 'AI analysis failed.';
 
 		const ratingMatch = responseContent.match(/Rating: (\d+)/);
-		const rating = ratingMatch ? ratingMatch[1] : 'No rating found';
+		const rating = ratingMatch ? Number(ratingMatch[1]) : NaN;
 
-		const summary = responseContent.replace(`Rating: ${rating}`, '').trim();
-		console.log('Rating and Summary:', rating, summary);
+		const positivesMatch = responseContent.match(/Positives:([\s\S]*?)(?=\nNegatives:|$)/);
+		const positives = positivesMatch
+			? positivesMatch[1]
+					.trim()
+					.split('\n')
+					.map((point) => point.replace(/^[-\d.\s]*/, '').trim())
+					.filter((point) => point !== '')
+			: [];
 
-		return res.status(200).json({ rating, summary });
+		const negativesMatch = responseContent.match(/Negatives:([\s\S]*)/);
+		const negatives = negativesMatch
+			? negativesMatch[1]
+					.trim()
+					.split('\n')
+					.map((point) => point.replace(/^[-\d.\s]*/, '').trim())
+					.filter((point) => point !== '')
+			: [];
+
+		console.log('openAIResponse ', responseContent, 'matched content', rating, positives, negatives);
+
+		return res.status(200).json({ rating, positives, negatives });
 	} catch (error) {
 		console.error('Error:', error);
 		return res.status(500).json({ error: 'Failed to process the report' });

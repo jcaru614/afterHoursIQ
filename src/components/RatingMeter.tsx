@@ -23,25 +23,24 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 		action = 'Strong Buy';
 	}
 
-	const gradientColor = normalizedScore === 0 ? 'gray' : `url(#gaugeGradient)`;
-
 	return (
 		<div className='flex flex-col items-center'>
+			<div className='text-white text-2xl font-semibold'>{action}</div>
 			<div className='relative w-80 h-48'>
 				<svg viewBox='0 0 120 60' className='w-full h-full'>
 					<defs>
 						<linearGradient id='gaugeGradient' x1='0%' y1='0%' x2='100%' y2='0%'>
-							<stop offset='0%' stopColor='#BA2011' />
-							<stop offset='20%' stopColor='#F67C00' />
-							<stop offset='40%' stopColor='#FEC600' />
-							<stop offset='70%' stopColor='#7AC309' />
-							<stop offset='100%' stopColor='#4C9B2F' />
+							<stop offset='0%' stopColor='#FB2C37' />
+							<stop offset='25%' stopColor='#E67A00' />
+							<stop offset='50%' stopColor='#F0B100' />
+							<stop offset='75%' stopColor='#66A12C' />
+							<stop offset='100%' stopColor='#00C851' />
 						</linearGradient>
 					</defs>
 
 					<path
 						d='M 10 60 A 50 50 0 0 1 110 60'
-						stroke={gradientColor}
+						stroke='url(#gaugeGradient)' // Use the defined gradient
 						strokeWidth='10'
 						fill='none'
 						strokeLinecap='round'
@@ -60,8 +59,6 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 					/>
 				</svg>
 			</div>
-
-			<div className='mt-6 text-white text-2xl font-semibold'>{action}</div>
 		</div>
 	);
 };
