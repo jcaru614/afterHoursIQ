@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { RatingMeter, ReportSummary, Alert, Navbar } from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
@@ -15,6 +15,7 @@ export default function Home() {
 	const [yearError, setYearError] = useState<string>('');
 	const currentYear = new Date().getFullYear();
 	const validYears = [currentYear, currentYear - 1].map(String);
+	const abortControllerRef = useRef<AbortController | null>(null);
 
 	const { rating, positives, negatives } = useSelector((state: RootState) => state.slice);
 
@@ -49,19 +50,41 @@ export default function Home() {
 		}
 
 		setIsScanning(true);
+		abortControllerRef.current = new AbortController();
+
 		try {
-			const { data } = await axios.post('/api/fetchReport', { url, quarter, year });
+			const { data } = await axios.post(
+				'/api/fetchReport',
+				{ url, quarter, year },
+				{ signal: abortControllerRef.current.signal }
+			);
 
 			console.log('data ', data);
 			dispatch(
 				setReportData({ rating: data.rating, positives: data.positives, negatives: data.negatives })
 			);
 		} catch (error) {
-			console.error('Error fetching the report:', error);
+			if (axios.isCancel(error)) {
+				console.log('Request canceled:', error.message);
+			} else {
+				console.error('Error fetching the report:', error);
+			}
 		} finally {
 			setIsScanning(false);
+			abortControllerRef.current = null;
 		}
 	};
+
+	const handleCancelScanning = () => {
+		console.log('handleCancelScan');
+		if (abortControllerRef.current) {
+			abortControllerRef.current.abort('Scanning canceled by user');
+			setIsScanning(false);
+			abortControllerRef.current = null;
+			console.log('handleCancelScan 2');
+		}
+	};
+
 	return (
 		<div className='flex flex-col min-h-screen'>
 			<Navbar />
@@ -106,17 +129,30 @@ export default function Home() {
 								))}
 							</select>
 						</div>
-						<button
-							className={`px-6 py-3 rounded-md text-white font-semibold w-full ${
-								isScanning || !url || !quarter || !year
-									? 'bg-gray-400 cursor-not-allowed'
-									: 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'
-							}`}
-							onClick={handleStartScanning}
-							disabled={isScanning || !url || !quarter || !year}
-						>
-							{isScanning ? 'Scanning...' : 'Start Scanning'}
-						</button>
+						<div className='flex w-full gap-4'>
+							<button
+								className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
+									isScanning || !url || !quarter || !year
+										? 'bg-gray-400 cursor-not-allowed'
+										: 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'
+								}`}
+								onClick={handleStartScanning}
+								disabled={isScanning || !url || !quarter || !year}
+							>
+								{isScanning ? 'Scanning...' : 'Start Scanning'}
+							</button>
+							<button
+								className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
+									!isScanning
+										? 'bg-gray-400 cursor-not-allowed'
+										: 'bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 focus:ring-4 focus:ring-red-300'
+								}`}
+								onClick={handleCancelScanning}
+								disabled={!isScanning}
+							>
+								Cancel Scan
+							</button>
+						</div>
 					</div>
 
 					<div className='flex justify-center'>
@@ -125,8 +161,8 @@ export default function Home() {
 				</div>
 
 				<div className='grid grid-cols-2 gap-6 w-full max-w-5xl mt-8'>
-					<ReportSummary items={positives} type='positive' />
 					<ReportSummary items={negatives} type='negative' />
+					<ReportSummary items={positives} type='positive' />
 				</div>
 
 				<Alert rating={rating} />
