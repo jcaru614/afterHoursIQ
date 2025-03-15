@@ -30,11 +30,11 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 				<svg viewBox='0 0 120 60' className='w-full h-full'>
 					<defs>
 						<linearGradient id='gaugeGradient' x1='0%' y1='0%' x2='100%' y2='0%'>
-							<stop offset='0%' stopColor='#FB2C37' />
-							<stop offset='25%' stopColor='#E67A00' />
-							<stop offset='50%' stopColor='#F0B100' />
-							<stop offset='75%' stopColor='#66A12C' />
-							<stop offset='100%' stopColor='#00C851' />
+							<stop offset='0%' stopColor='#b91c1c' />
+							<stop offset='25%' stopColor='#ea580c' />
+							<stop offset='50%' stopColor='#f59e0b' />
+							<stop offset='75%' stopColor='#65a30d' />
+							<stop offset='100%' stopColor='#15803d' />
 						</linearGradient>
 					</defs>
 

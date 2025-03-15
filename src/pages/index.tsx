@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { RatingMeter, ReportSummary, Alert, Navbar } from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
-import { setReportData } from '@/redux/slice';
+import { setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
 
 export default function Home() {
@@ -11,13 +11,11 @@ export default function Home() {
 	const [quarter, setQuarter] = useState<string>('');
 	const [year, setYear] = useState<string>('');
 	const [isScanning, setIsScanning] = useState<boolean>(false);
-	const [quarterError, setQuarterError] = useState<string>('');
-	const [yearError, setYearError] = useState<string>('');
 	const currentYear = new Date().getFullYear();
 	const validYears = [currentYear, currentYear - 1].map(String);
 	const abortControllerRef = useRef<AbortController | null>(null);
 
-	const { rating, positives, negatives } = useSelector((state: RootState) => state.slice);
+	const { rating, positives, negatives, statusCode } = useSelector((state: RootState) => state.slice);
 
 	const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setUrl(e.target.value);
@@ -26,29 +24,14 @@ export default function Home() {
 	const handleQuarterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 		const value = e.target.value;
 		setQuarter(value);
-		setQuarterError('');
 	};
 
 	const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 		const value = e.target.value;
 		setYear(value);
-		setYearError('');
 	};
 
 	const handleStartScanning = async () => {
-		if (!url) {
-			alert('Please enter a valid URL');
-			return;
-		}
-		if (!quarter || !year) {
-			alert('Please enter a valid quarter and year');
-			return;
-		}
-		if (quarterError || yearError) {
-			alert('Please fix the errors before proceeding');
-			return;
-		}
-
 		setIsScanning(true);
 		abortControllerRef.current = new AbortController();
 
@@ -66,6 +49,9 @@ export default function Home() {
 		} catch (error) {
 			if (axios.isCancel(error)) {
 				console.log('Request canceled:', error.message);
+			} else if (axios.isAxiosError(error) && error.response?.status === 408) {
+				console.log('Polling timeout reached:', error.response.data.error);
+				dispatch(setStatusCode(error.response.status));
 			} else {
 				console.error('Error fetching the report:', error);
 			}
@@ -95,8 +81,8 @@ export default function Home() {
 					Your AI-powered guide to stock performance after hours
 				</p>
 
-				<div className='grid grid-cols-[2fr_1fr] gap-12 w-full max-w-4xl items-start'>
-					<div className='flex flex-col items-center w-full'>
+				<div className='grid grid-cols-2 gap-6 w-full max-w-5xl items-start'>
+					<div className='flex flex-col items-center w-full col-span-1'>
 						<input
 							type='url'
 							placeholder='Enter previous report URL'
@@ -154,7 +140,6 @@ export default function Home() {
 							</button>
 						</div>
 					</div>
-
 					<div className='flex justify-center'>
 						<RatingMeter score={rating} />
 					</div>
@@ -165,7 +150,7 @@ export default function Home() {
 					<ReportSummary items={positives} type='positive' />
 				</div>
 
-				<Alert rating={rating} />
+				<Alert rating={rating} statusCode={statusCode} />
 			</div>
 		</div>
 	);

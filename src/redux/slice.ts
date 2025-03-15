@@ -4,12 +4,14 @@ interface SliceState {
 	rating: number | null;
 	positives: Array<string> | null;
 	negatives: Array<string> | null;
+	statusCode: number | null;
 }
 
 const initialState: SliceState = {
 	rating: 0,
 	positives: null,
 	negatives: null,
+	statusCode: null,
 };
 
 const slice = createSlice({
@@ -25,8 +27,12 @@ const slice = createSlice({
 			state.positives = action.payload.positives;
 			state.negatives = action.payload.negatives;
 		},
+		setStatusCode(state, action: PayloadAction<number>) {
+			console.log('payload ', action.payload);
+			state.statusCode = action.payload;
+		},
 	},
 });
 
-export const { setReportData } = slice.actions;
+export const { setReportData, setStatusCode } = slice.actions;
 export default slice.reducer;

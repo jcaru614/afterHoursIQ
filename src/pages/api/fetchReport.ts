@@ -2,8 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
 
-const POLLING_INTERVAL = 60 * 1000; 
-const MAX_POLLING_TIME = 3 * 60 * 1000;
+const POLLING_INTERVAL = 60 * 1000;
+const MAX_POLLING_TIME = 2 * 60 * 1000;
 
 const checkReportAvailability = async (url: string, signal: AbortSignal): Promise<boolean> => {
 	try {
@@ -99,7 +99,7 @@ const pollForReport = async (predictedUrl: string, signal: AbortSignal): Promise
 	}
 
 	console.log('[PollTimeout] Maximum duration reached');
-	return null;
+	return null; // Indicate polling timeout
 };
 
 const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
@@ -125,7 +125,8 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		try {
 			new URL(url);
 		} catch (error) {
-			return res.status(400).json({ error: error });
+			console.log(error);
+			return res.status(400).json({ error: 'Invalid URL format' });
 		}
 
 		const quarterNameMap: { [key: number]: string } = {
@@ -159,10 +160,12 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		predictedUrl = predictedUrl.replace(/\d{4}/, year.toString());
 		console.log('[PredictedURL]', predictedUrl);
 
+		// Poll for the report
 		const finalUrl = await pollForReport(predictedUrl, signal);
 
 		if (!finalUrl) {
-			return res.status(404).json({ error: 'Report not found after polling' });
+			console.log('[TimeoutReached] Maximum polling time reached');
+			return res.status(408).json({ error: 'Maximum polling time reached. Report not found.' });
 		}
 
 		console.log('[DiffbotRequest] Starting...');
@@ -216,7 +219,7 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 				positivesMatch?.[1]
 					?.split('\n')
 					.filter(Boolean)
-					.map((p) => p.replace(/^[-•\d.\s]+/, '').trim()) || [], 
+					.map((p) => p.replace(/^[-•\d.\s]+/, '').trim()) || [],
 			negatives:
 				negativesMatch?.[1]
 					?.split('\n')
