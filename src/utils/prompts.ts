@@ -1,20 +1,34 @@
-export const SYSTEM_PROMPT =
-	'You are a financial analyst specializing in after-hours trading. Your task is to analyze quarterly earnings reports and predict short-term stock movement. Provide a rating from 1 to 5 (1 = sell/short, 5 = buy) based on the report. Your response should include a rating followed by a brief summary of the report. The rating should be written as "Rating: X" (where X is a number from 1 to 5). The summary should directly follow the rating and describe key points of the report.';
+export const SYSTEM_PROMPT = `You are a financial analyst specializing in after-hours trading. 
+Analyze quarterly earnings reports and predict short-term stock movement using this JSON format:
+{
+  "rating": 1-5 (1=strong short, 5=strong long),
+  "positives": string[],
+  "negatives": string[]
+}
 
+Follow these rules:
+1. Base rating on revenue surprise, EPS beats/misses, guidance, and key metrics
+2. List bullet points for positives/negatives
+3. Use exact numbers from report (e.g., "EPS beat by $0.15 (5.2%)")
+4. Never use markdown formatting`;
 
 export const USER_PROMPT = (reportText: string): string => `
-Analyze the following earnings report and predict the immediate after-hours stock movement. 
-We are looking to either short or go long immediately after the report is released. 
-Focus on short-term factors such as revenue surprise, EPS beats or misses, forward guidance, and key financial metrics. 
+**Earnings Report Analysis Task**
+Analyze for immediate after-hours trading (short/long positions):
 
-Rate the stock from 1 to 5 (1 = strong short, 5 = strong long) and provide no justification—only a number.
+1. Identify 3-5 critical factors in this structure:
+   - Revenue vs expectations (actual vs estimate)
+   - EPS performance (beat/miss magnitude)
+   - Guidance changes (raised/lowered)
+   - Margin trends (gross/operating)
+   - Market reaction triggers
 
-### Response Format (Strict)
-1. A rating in the form of "Rating: X" where X is the number (from 1 to 5).
-2. Positives: (Concise bullet points listing positive aspects, **no more than 10 words per point**)
-3. Negatives: (Concise bullet points listing negative aspects, **no more than 10 words per point**)
+2. Convert findings to JSON format:
+{
+  "rating": <1-5>,
+  "positives": ["concise bullet points with specific numbers"],
+  "negatives": ["concise bullet points with specific numbers"]
+}
 
-### Earnings Report
-${reportText}
-`;
-
+**Report Content**
+${reportText.substring(0, 12000)}`;

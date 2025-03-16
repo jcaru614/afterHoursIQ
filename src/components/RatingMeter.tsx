@@ -40,7 +40,7 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 
 					<path
 						d='M 10 60 A 50 50 0 0 1 110 60'
-						stroke='url(#gaugeGradient)' // Use the defined gradient
+						stroke='url(#gaugeGradient)'
 						strokeWidth='10'
 						fill='none'
 						strokeLinecap='round'
@@ -57,6 +57,8 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
 						transform={`rotate(${needleAngle}, 60, 60)`}
 						style={{ transition: 'transform 0.5s ease-in-out' }}
 					/>
+
+					<circle cx='60' cy='60' r='4' fill='white' />
 				</svg>
 			</div>
 		</div>

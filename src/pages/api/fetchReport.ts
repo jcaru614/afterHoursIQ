@@ -5,10 +5,81 @@ import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
 const POLLING_INTERVAL = 60 * 1000;
 const MAX_POLLING_TIME = 2 * 60 * 1000;
 
+function predictNextQuarterUrl(
+	currentUrl: string,
+	targetQuarter: number,
+	targetYear: number
+): string {
+
+	const quarterPatterns = [
+		{ regex: /q([1-4])/gi, replace: () => `q${targetQuarter}` },
+		{
+			regex: /(first|second|third|fourth)(-quarter)?/gi,
+			replace: () => ['first', 'second', 'third', 'fourth'][targetQuarter - 1] + (RegExp.$2 || ''),
+		},
+		{ regex: /quarter[-]?([1-4])/gi, replace: () => `quarter-${targetQuarter}` },
+		{ regex: /([1-4])q/gi, replace: () => `${targetQuarter}q` },
+		{
+			regex: /([1-4])(st|nd|rd|th)[-]?quarter/gi,
+			replace: () => `${targetQuarter}${getOrdinalSuffix(targetQuarter)}-quarter`,
+		},
+	];
+
+	let predictedUrl = currentUrl;
+
+	for (const pattern of quarterPatterns) {
+		predictedUrl = predictedUrl.replace(pattern.regex, pattern.replace);
+	}
+
+	const yearPatterns = [
+		{
+			regex: /\b(FY)?(\d{2}|\d{4})\b/g,
+			replace: (match, fyPrefix, yearPart) => {
+				const fullYear = yearPart.length === 2 ? '20' + yearPart : yearPart;
+				if (parseInt(fullYear) !== targetYear) {
+					const newYear = fyPrefix
+						? `FY${targetYear.toString().slice(-2)}`
+						: yearPart.length === 2
+						? targetYear.toString().slice(-2)
+						: targetYear.toString();
+					return fyPrefix ? `FY${newYear}` : newYear;
+				}
+				return match; 
+			},
+		},
+		{
+			regex: /\/(\d{4})\//g,
+			replace: (match, year) => {
+				return parseInt(year) !== targetYear ? `/${targetYear}/` : match;
+			},
+		},
+		{
+			regex: /(\d{4})([^\w/]|$)/g,
+			replace: (match, year, trailing) => {
+				return parseInt(year) !== targetYear ? `${targetYear}${trailing}` : match;
+			},
+		},
+	];
+
+	for (const pattern of yearPatterns) {
+		predictedUrl = predictedUrl.replace(pattern.regex, pattern.replace);
+	}
+
+	return predictedUrl;
+}
+
+function getOrdinalSuffix(num: number): string {
+	const j = num % 10;
+	const k = num % 100;
+	if (j == 1 && k != 11) return 'st';
+	if (j == 2 && k != 12) return 'nd';
+	if (j == 3 && k != 13) return 'rd';
+	return 'th';
+}
+
 const checkReportAvailability = async (url: string, signal: AbortSignal): Promise<boolean> => {
 	try {
 		new URL(url);
-
 		const response = await axios.get(url, {
 			signal,
 			validateStatus: (status) => status >= 200 && status < 500,
@@ -17,32 +88,15 @@ const checkReportAvailability = async (url: string, signal: AbortSignal): Promis
 
 		console.log(`[CheckReport] URL: ${url} - Status: ${response.status}`);
 
-		if (response.status === 404) {
-			console.log(`[404] Report not found at: ${url}`);
-			return false;
-		}
-
-		if (response.status !== 200) {
+		if (response.status === 404 || response.status !== 200) {
 			console.log(`[${response.status}] Unexpected status for: ${url}`);
 			return false;
 		}
 
 		const pageContent = response.data.toLowerCase();
-		const quarterlyReportKeywords = [
-			'revenue',
-			'eps',
-			'net income',
-			'guidance',
-			'quarterly',
-			'gaap',
-			'non-gaap',
-			'outlook',
-		];
+		const quarterlyReportKeywords = ['revenue', 'eps', 'net income', 'guidance', 'quarterly', 'gaap'];
 
-		const hasFinancialTerms = quarterlyReportKeywords.some((term) =>
-			pageContent.includes(term.toLowerCase())
-		);
-
+		const hasFinancialTerms = quarterlyReportKeywords.some((term) => pageContent.includes(term));
 		console.log(`[CheckReport] Financial terms found: ${hasFinancialTerms}`);
 		return hasFinancialTerms;
 	} catch (error) {
@@ -50,16 +104,7 @@ const checkReportAvailability = async (url: string, signal: AbortSignal): Promis
 			console.log(`[Cancelled] Check aborted for: ${url}`);
 			throw error;
 		}
-
-		if (axios.isAxiosError(error)) {
-			console.log(`[Axios Error] ${error.code} - ${error.message}`);
-			if (error.response) {
-				console.log(`[Response] Status: ${error.response.status}`);
-			}
-		} else {
-			console.log('[Non-Axios Error]', error);
-		}
-
+		console.log('[Error] Checking report availability:', error);
 		return false;
 	}
 };
@@ -81,12 +126,10 @@ const pollForReport = async (predictedUrl: string, signal: AbortSignal): Promise
 
 		try {
 			const isAvailable = await checkReportAvailability(predictedUrl, signal);
-
 			if (isAvailable) {
 				console.log(`[ReportFound] At: ${predictedUrl}`);
 				return predictedUrl;
 			}
-
 			console.log(`[Retry] Waiting ${POLLING_INTERVAL / 1000}s...`);
 			await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL));
 		} catch (error) {
@@ -99,12 +142,13 @@ const pollForReport = async (predictedUrl: string, signal: AbortSignal): Promise
 	}
 
 	console.log('[PollTimeout] Maximum duration reached');
-	return null; // Indicate polling timeout
+	return null;
 };
 
-const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
 	const controller = new AbortController();
 	const { signal } = controller;
+
 	req.on('close', () => {
 		console.log('[ConnectionClosed] Client terminated request');
 		controller.abort();
@@ -118,76 +162,32 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 		const { quarter, year, url } = req.body;
 		console.log('[Request]', { url, quarter, year });
 
-		if (!url) {
-			return res.status(400).json({ error: 'URL required' });
+		if (!url || quarter < 1 || quarter > 4) {
+			return res.status(400).json({ error: 'Invalid input' });
 		}
 
-		try {
-			new URL(url);
-		} catch (error) {
-			console.log(error);
-			return res.status(400).json({ error: 'Invalid URL format' });
-		}
-
-		const quarterNameMap: { [key: number]: string } = {
-			1: 'first',
-			2: 'second',
-			3: 'third',
-			4: 'fourth',
-		};
-		const quarterNumberMap: { [key: number]: string } = {
-			1: 'q1',
-			2: 'q2',
-			3: 'q3',
-			4: 'q4',
-		};
-
-		if (!quarterNameMap[quarter] || !quarterNumberMap[quarter]) {
-			return res.status(400).json({ error: 'Invalid quarter (1-4)' });
-		}
-
-		let predictedUrl = url;
-		const quarterNames = Object.values(quarterNameMap);
-		const containsQuarterName = quarterNames.some((name) => url.includes(name));
-		const containsQuarterNumber = /q[1-4]/i.test(url);
-
-		if (containsQuarterName) {
-			predictedUrl = url.replace(new RegExp(`(${quarterNames.join('|')})`, 'i'), quarterNameMap[quarter]);
-		} else if (containsQuarterNumber) {
-			predictedUrl = url.replace(/q[1-4]/i, quarterNumberMap[quarter]);
-		}
-
-		predictedUrl = predictedUrl.replace(/\d{4}/, year.toString());
+		const predictedUrl = predictNextQuarterUrl(url, quarter, year);
 		console.log('[PredictedURL]', predictedUrl);
-
-		// Poll for the report
 		const finalUrl = await pollForReport(predictedUrl, signal);
 
 		if (!finalUrl) {
-			console.log('[TimeoutReached] Maximum polling time reached');
 			return res.status(408).json({ error: 'Maximum polling time reached. Report not found.' });
 		}
 
-		console.log('[DiffbotRequest] Starting...');
+		console.log('[DiffbotRequest] Fetching article...');
 		const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
-			params: {
-				token: process.env.DIFFBOT_API_KEY,
-				url: finalUrl,
-			},
+			params: { token: process.env.DIFFBOT_API_KEY, url: finalUrl },
 			signal,
 			timeout: 15000,
 		});
-
 		const reportText = diffbotResponse.data.objects[0]?.text;
-		if (!reportText) {
-			return res.status(500).json({ error: 'Failed to extract report text' });
-		}
+		if (!reportText) return res.status(500).json({ error: 'Failed to extract report text' });
 
-		console.log('[OpenAIRequest] Starting...');
+		console.log('[OpenAIRequest] Analyzing report...');
 		const openAIResponse = await axios.post(
 			'https://api.openai.com/v1/chat/completions',
 			{
-				model: 'gpt-4',
+				model: 'gpt-4-turbo',
 				messages: [
 					{ role: 'system', content: SYSTEM_PROMPT },
 					{ role: 'user', content: USER_PROMPT(reportText) },
@@ -203,41 +203,12 @@ const fetchReport = async (req: NextApiRequest, res: NextApiResponse) => {
 				timeout: 30000,
 			}
 		);
-
 		const responseContent = openAIResponse.data.choices[0]?.message?.content;
-		if (!responseContent) {
-			return res.status(500).json({ error: 'AI analysis failed' });
-		}
+		if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
 
-		const ratingMatch = responseContent.match(/Rating: (\d+)/);
-		const positivesMatch = responseContent.match(/Positives:([\s\S]*?)(?=\nNegatives:|$)/);
-		const negativesMatch = responseContent.match(/Negatives:([\s\S]*)/);
-
-		const result = {
-			rating: ratingMatch ? Number(ratingMatch[1]) : 0,
-			positives:
-				positivesMatch?.[1]
-					?.split('\n')
-					.filter(Boolean)
-					.map((p) => p.replace(/^[-•\d.\s]+/, '').trim()) || [],
-			negatives:
-				negativesMatch?.[1]
-					?.split('\n')
-					.filter(Boolean)
-					.map((p) => p.replace(/^[-•\d.\s]+/, '').trim()) || [],
-		};
-
-		console.log('[Success] Analysis completed');
-		return res.status(200).json(result);
+		return res.status(200).json(JSON.parse(responseContent));
 	} catch (error) {
-		if (axios.isCancel(error)) {
-			console.log('[Cancelled] Request aborted');
-			return res.status(499).json({ error: 'Request cancelled' });
-		}
-
 		console.error('[FatalError]', error);
 		return res.status(500).json({ error: 'Internal server error' });
 	}
-};
-
-export default fetchReport;
+}
