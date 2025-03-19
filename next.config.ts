@@ -1,12 +1,17 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  devIndicators: false,
-  images: {
-    domains: ['cdn.brandfetch.io'],
-  },
-
+	reactStrictMode: true,
+	devIndicators: false,
+	images: {
+		remotePatterns: [
+			{
+				protocol: 'https',
+				hostname: 'cdn.brandfetch.io',
+				pathname: '/**',
+			},
+		],
+	},
 };
 
 export default nextConfig;

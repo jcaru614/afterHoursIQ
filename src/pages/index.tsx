@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { RatingMeter, ReportSummary, Alert, Navbar, BrandLogo } from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
@@ -6,203 +6,223 @@ import { setCompanyDomain, setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
 
 export default function Home() {
-	const dispatch = useDispatch();
-	const [url, setUrl] = useState<string>('');
-	const [quarter, setQuarter] = useState<string>('');
-	const [year, setYear] = useState<string>('');
-	const [isScanning, setIsScanning] = useState<boolean>(false);
-	const currentYear = new Date().getFullYear();
-	const validYears = [currentYear, currentYear - 1].map(String);
-	const abortControllerRef = useRef<AbortController | null>(null);
+  const dispatch = useDispatch();
 
-	const { rating, positives, negatives, statusCode, companyDomain } = useSelector(
-		(state: RootState) => state.slice
-	);
+  const [url, setUrl] = useState<string>('');
+  const [quarter, setQuarter] = useState<string>('');
+  const [year, setYear] = useState<string>('');
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const currentYear = new Date().getFullYear();
+  const validYears = [currentYear, currentYear - 1].map((year) => year.toString().slice(-2));
+  const [fgiData, setFgiData] = useState<any>(null);
+  const [vixData, setVixData] = useState<any>(null);
 
-	const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const newUrl = e.target.value;
-		setUrl(newUrl);
-		if (!newUrl) {
-			dispatch(setCompanyDomain(null)); 
-			return;
-		}
-		fetchCompanyOverview(newUrl);
-	};
+  const { rating, positives, negatives, reportUrl, statusCode, companyDomain } = useSelector(
+    (state: RootState) => state.slice
+  );
 
-	const fetchCompanyOverview = async (url: string) => {
-		if (!url.trim()) return;
+  const fetchMarketData = async () => {
+    try {
+      console.log('Fetching market data...');
+      const response = await axios.get('/api/fetchMarketData');
+      console.log('Response received:', response.data);
+      setVixData(response.data.vix);
+      setFgiData(response.data.fearAndGreed);
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+    }
+  };
 
-		console.log('Fetching company overview for URL:', url);
+  useEffect(() => {
+    fetchMarketData();
+  }, []);
 
-		try {
-			const { data } = await axios.get(`/api/fetchCompanyOverview?url=${url}`);
-			console.log('Data fetched:', data);
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrl = e.target.value;
+    setUrl(newUrl);
+    if (!newUrl) {
+      dispatch(setCompanyDomain(null));
+      return;
+    }
+    fetchCompanyOverview(newUrl);
+  };
 
-			if (data) {
-				dispatch(setCompanyDomain(data.domain));
-				// dispatch(setCompanyOverview(data.companyOverview));
-			}
-		} catch (error) {
-			if (axios.isAxiosError(error)) {
-				if (error.response?.status === 400) {
-					console.error('Bad Request, URL may be invalid');
-				} else {
-					console.error('Error fetching company overview:', error.response?.data || error.message);
-				}
-			} else {
-				console.error('Unexpected error:', error);
-			}
-		}
-	};
+  const fetchCompanyOverview = async (url: string) => {
+    if (!url.trim()) return;
 
-	const handleQuarterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-		const value = e.target.value;
-		setQuarter(value);
-	};
+    console.log('Fetching company overview for URL:', url);
 
-	const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-		const value = e.target.value;
-		setYear(value);
-	};
+    try {
+      const { data } = await axios.get(`/api/fetchCompanyLogo?url=${url}`);
+      console.log('Data fetched:', data);
 
-	const handleStartScanning = async () => {
-		setIsScanning(true);
-		abortControllerRef.current = new AbortController();
+      if (data) {
+        dispatch(setCompanyDomain(data.domain));
+      }
+    } catch (error) {
+      console.error('Error fetching company overview:', error.response?.data || error.message);
+    }
+  };
 
-		try {
-			const { data } = await axios.post(
-				'/api/fetchReport',
-				{ url, quarter, year },
-				{ signal: abortControllerRef.current.signal }
-			);
+  const handleQuarterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setQuarter(value);
+  };
 
-			console.log('data ', data);
-			dispatch(
-				setReportData({ rating: data.rating, positives: data.positives, negatives: data.negatives })
-			);
-		} catch (error) {
-			if (axios.isCancel(error)) {
-				console.log('Request canceled:', error.message);
-			} else if (axios.isAxiosError(error) && error.response?.status === 408) {
-				console.log('Polling timeout reached:', error.response.data.error);
-				dispatch(setStatusCode(error.response.status));
-			} else {
-				console.error('Error fetching the report:', error);
-			}
-		} finally {
-			setIsScanning(false);
-			abortControllerRef.current = null;
-		}
-	};
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setYear(value);
+  };
 
-	const handleCancelScanning = () => {
-		console.log('handleCancelScan');
-		if (abortControllerRef.current) {
-			abortControllerRef.current.abort('Scanning canceled by user');
-			setIsScanning(false);
-			abortControllerRef.current = null;
-			console.log('handleCancelScan 2');
-		}
-	};
+  const handleStartScanning = async () => {
+    setIsScanning(true);
+    try {
+      const { data } = await axios.post('/api/fetchReport', {
+        url,
+        quarter,
+        year,
+      });
 
-	return (
-		<div className='flex flex-col min-h-screen'>
-			<Navbar />
+      console.log('data ', data);
+      dispatch(setReportData(data));
+    } catch (error) {
+      if (error.response?.status === 408) {
+        console.log('Polling timeout reached:', error.response.data.error);
+        dispatch(setStatusCode(error.response.status));
+      } else {
+        console.error('Error fetching the report:', error);
+      }
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
-			<div className='flex flex-col items-center p-8 w-full max-w-6xl mx-auto'>
-				<div className='grid grid-cols-2 gap-6 w-full'>
-					<div className='flex flex-col items-start'>
-						<h1 className='text-4xl font-semibold mb-4'>Quarterly Performance Rating</h1>
-						<p className='text-lg text-white-600 mb-6'>
-							Your AI-powered guide to stock performance after hours
-						</p>
-					</div>
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <div className="flex flex-col items-center p-8 w-full max-w-6xl mx-auto">
+        <div className="grid grid-cols-2 gap-6 w-full">
+          <div className="flex flex-col items-start">
+            <h1 className="text-4xl font-semibold mb-4">Quarterly Performance Rating</h1>
+            <p className="text-lg text-white-600 mb-6">
+              An AI-powered analysis that evaluates a company&apos;s quarterly earnings, helping you
+              make informed after-hours trading decisions.
+            </p>
+          </div>
 
-					<div className='flex flex-row items-center justify-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] rounded-xl shadow-lg h-[100px] w-full overflow-hidden space-x-4'>
-						{companyDomain && (
-							<div className='flex items-center justify-center'>
-								<BrandLogo domain={companyDomain} />
-							</div>
-						)}
-						<h2 className='text-xl font-bold text-white uppercase'>
-							{companyDomain && companyDomain ? companyDomain.replace('.com', '') : ''}
-						</h2>
-					</div>
-				</div>
+          <div className="relative flex items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] rounded-xl shadow-lg h-[160px] max-w-6xl overflow-hidden p-6">
+            <div className="flex flex-col items-center space-y-2 w-auto max-w-[200px]">
+              {companyDomain && (
+                <>
+                  <h2
+                    className={`text-2xl font-bold text-white uppercase text-center ${companyDomain.replace('.com', '').length > 10 ? 'truncate max-w-[120px]' : ''}`}
+                  >
+                    {companyDomain.replace('.com', '')}
+                  </h2>
 
-				<div className='grid grid-cols-2 gap-6 w-full mt-6'>
-					<div className='flex flex-col w-full col-span-1'>
-						<input
-							type='url'
-							placeholder='Enter previous report URL'
-							className='p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all'
-							value={url}
-							onChange={handleUrlChange}
-						/>
-						<div className='flex w-full justify-between mb-4'>
-							<select
-								className='p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all'
-								value={quarter}
-								onChange={handleQuarterChange}
-							>
-								<option value=''>Select Quarter</option>
-								<option value='1'>Q1</option>
-								<option value='2'>Q2</option>
-								<option value='3'>Q3</option>
-								<option value='4'>Q4</option>
-							</select>
-							<select
-								className='p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all'
-								value={year}
-								onChange={handleYearChange}
-							>
-								<option value=''>Select Year</option>
-								{validYears.map((yearOption) => (
-									<option key={yearOption} value={yearOption}>
-										{yearOption}
-									</option>
-								))}
-							</select>
-						</div>
+                  <div className="flex items-center justify-center w-16 h-16">
+                    <BrandLogo domain={companyDomain} />
+                  </div>
+                </>
+              )}
+            </div>
 
-						<div className='flex w-full gap-4'>
-							<button
-								className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
-									isScanning || !url || !quarter || !year
-										? 'bg-gray-400 cursor-not-allowed'
-										: 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'
-								}`}
-								onClick={handleStartScanning}
-								disabled={isScanning || !url || !quarter || !year}
-							>
-								{isScanning ? 'Scanning...' : 'Start Scanning'}
-							</button>
-							<button
-								className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
-									!isScanning
-										? 'bg-gray-400 cursor-not-allowed'
-										: 'bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 focus:ring-4 focus:ring-red-300'
-								}`}
-								onClick={handleCancelScanning}
-								disabled={!isScanning}
-							>
-								Cancel Scan
-							</button>
-						</div>
-					</div>
+            {fgiData && vixData && (
+              <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center space-y-2">
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-lg text-white">F&G</span>
+                  <div
+                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${fgiData.value <= 20 ? 'bg-red-900 text-white' : fgiData.value <= 40 ? 'bg-red-600 text-white' : fgiData.value <= 60 ? 'bg-yellow-500 text-black' : fgiData.value <= 80 ? 'bg-green-500 text-black' : 'bg-green-800 text-white'}`}
+                  >
+                    {fgiData.value}
+                  </div>
+                </div>
+                <span className="text-sm">{fgiData.sentiment}</span>
 
-					<div className='flex justify-center items-center'>
-						<RatingMeter score={rating} />
-					</div>
-				</div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-lg text-white">VIX</span>
+                  <div
+                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${vixData.value > 35 ? 'bg-red-900 text-white' : vixData.value > 25 ? 'bg-red-600 text-white' : vixData.value >= 16 ? 'bg-yellow-500 text-black' : vixData.value >= 11 ? 'bg-green-500 text-black' : 'bg-green-800 text-white'}`}
+                  >
+                    {vixData.value}
+                  </div>
+                </div>
+                <span className="text-sm">{vixData.sentiment}</span>
+              </div>
+            )}
 
-				<div className='grid grid-cols-2 gap-6 w-full mt-8'>
-					<ReportSummary items={negatives} type='negative' />
-					<ReportSummary items={positives} type='positive' />
-				</div>
+            <div className="flex flex-col items-end justify-center w-40 ml-auto">
+              {reportUrl && (
+                <a
+                  href={reportUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-400 hover:text-blue-300 truncate max-w-[200px]"
+                >
+                  View Report
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-6 w-full mt-6">
+          <div className="flex flex-col w-full col-span-1">
+            <input
+              type="url"
+              placeholder="Enter previous report URL"
+              className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              value={url}
+              onChange={handleUrlChange}
+            />
+            <div className="flex w-full justify-between mb-4">
+              <select
+                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                value={quarter}
+                onChange={handleQuarterChange}
+              >
+                <option value="">Select Quarter</option>
+                <option value="1">Q1</option>
+                <option value="2">Q2</option>
+                <option value="3">Q3</option>
+                <option value="4">Q4</option>
+              </select>
+              <select
+                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                value={year}
+                onChange={handleYearChange}
+              >
+                <option value="">Select Year</option>
+                {validYears.map((yearOption) => (
+                  <option key={yearOption} value={yearOption}>
+                    {yearOption}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-				<Alert rating={rating} statusCode={statusCode} />
-			</div>
-		</div>
-	);
+            <div className="flex w-full gap-4">
+              <button
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !url || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
+                onClick={handleStartScanning}
+                disabled={isScanning || !url || !quarter || !year}
+              >
+                {isScanning ? 'Scanning...' : 'Start Scanning'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-center items-center">
+            <RatingMeter score={rating} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 w-full mt-8">
+          <ReportSummary items={negatives} type="negative" />
+          <ReportSummary items={positives} type="positive" />
+        </div>
+
+        <Alert rating={rating} statusCode={statusCode} />
+      </div>
+    </div>
+  );
 }
