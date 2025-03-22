@@ -78,17 +78,18 @@ const pollForReport = async (predictedUrl: string): Promise<string | null> => {
   }
   return null;
 };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { quarter, year, url } = req.body;
-    console.log('[Request]', { url, quarter, year });
+    const { quarter, year, previousReportUrl, reportsPageUrl } = req.body;
+    console.log('[Request]', { previousReportUrl, reportsPageUrl, quarter, year });
 
-    const predictedUrl = predictNextQuarterUrl(url, quarter, year);
-    console.log({ 'Original URL': url, 'Predicted URL': predictedUrl });
+    const predictedUrl = predictNextQuarterUrl(previousReportUrl, quarter, year);
+    console.log({ 'Predicted URL': predictedUrl });
 
     const reportUrl = await pollForReport(predictedUrl);
 
@@ -111,7 +112,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const pdfData = await pdf(contentResponse.data);
         reportText = pdfData.text;
-        console.log('[PDF] Extracted text (first 500 chars):', reportText.substring(0, 500));
       } catch (pdfError) {
         console.log('[PDF] Parsing failed:', pdfError);
         return res.status(500).json({ error: 'Failed to extract PDF text' });
@@ -145,6 +145,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timeout: 30000,
       }
     );
+
     const responseContent = openAIResponse.data.choices[0]?.message?.content;
     if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
 

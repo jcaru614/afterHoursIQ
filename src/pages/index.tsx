@@ -8,7 +8,8 @@ import { RootState } from '@/redux/store';
 export default function Home() {
   const dispatch = useDispatch();
 
-  const [url, setUrl] = useState<string>('');
+  const [reportsPageUrl, setReportsPageUrl] = useState<string>('');
+  const [previousReportUrl, setPreviousReportUrl] = useState<string>('');
   const [quarter, setQuarter] = useState<string>('');
   const [year, setYear] = useState<string>('');
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -23,7 +24,6 @@ export default function Home() {
 
   const fetchMarketData = async () => {
     try {
-      console.log('Fetching market data...');
       const response = await axios.get('/api/fetchMarketData');
       console.log('Response received:', response.data);
       setVixData(response.data.vix);
@@ -37,9 +37,9 @@ export default function Home() {
     fetchMarketData();
   }, []);
 
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePreviousReportUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
-    setUrl(newUrl);
+    setPreviousReportUrl(newUrl);
     if (!newUrl) {
       dispatch(setCompanyDomain(null));
       return;
@@ -49,9 +49,6 @@ export default function Home() {
 
   const fetchCompanyOverview = async (url: string) => {
     if (!url.trim()) return;
-
-    console.log('Fetching company overview for URL:', url);
-
     try {
       const { data } = await axios.get(`/api/fetchCompanyLogo?url=${url}`);
       console.log('Data fetched:', data);
@@ -78,16 +75,15 @@ export default function Home() {
     setIsScanning(true);
     try {
       const { data } = await axios.post('/api/fetchReport', {
-        url,
+        reportsPageUrl,
+        previousReportUrl,
         quarter,
         year,
       });
 
-      console.log('data ', data);
       dispatch(setReportData(data));
     } catch (error) {
       if (error.response?.status === 408) {
-        console.log('Polling timeout reached:', error.response.data.error);
         dispatch(setStatusCode(error.response.status));
       } else {
         console.error('Error fetching the report:', error);
@@ -169,10 +165,17 @@ export default function Home() {
           <div className="flex flex-col w-full col-span-1">
             <input
               type="url"
+              placeholder="Enter main report/news page URL"
+              className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              value={reportsPageUrl}
+              onChange={(e) => setReportsPageUrl(e.target.value)}
+            />
+            <input
+              type="url"
               placeholder="Enter previous report URL"
               className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-              value={url}
-              onChange={handleUrlChange}
+              value={previousReportUrl}
+              onChange={handlePreviousReportUrlChange}
             />
             <div className="flex w-full justify-between mb-4">
               <select
@@ -202,9 +205,9 @@ export default function Home() {
 
             <div className="flex w-full gap-4">
               <button
-                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !url || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
                 onClick={handleStartScanning}
-                disabled={isScanning || !url || !quarter || !year}
+                disabled={isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year}
               >
                 {isScanning ? 'Scanning...' : 'Start Scanning'}
               </button>
