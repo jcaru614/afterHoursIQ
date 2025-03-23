@@ -2,80 +2,92 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
+import { hasCorrectQuarter, hasCorrectYear, isPDFFile } from '@/utils/serverSide';
 import pdf from 'pdf-parse';
 import { predictNextQuarterUrl } from '@/lib/predictNextQuarterUrl';
-const POLLING_INTERVAL = 60 * 1000;
-const MAX_POLLING_TIME = 3 * 60 * 1000;
-const PDF_CONTENT_TYPES = ['application/pdf', 'application/octet-stream'];
+import * as cheerio from 'cheerio';
+import * as fuzz from 'fuzzball';
+import puppeteer from 'puppeteer';
+import { isEarningsReport } from '@/lib/isEarningsReport';
 
-const checkReportAvailability = async (url: string): Promise<boolean> => {
-  try {
-    new URL(url);
-    const response = await axios.get(url, {
-      validateStatus: (status) => status >= 200 && status < 500,
-      responseType: 'arraybuffer',
-    });
+const SCANING_INTERVAL = 60 * 1000;
+const MAX_SCANING_TIME = 3 * 60 * 1000;
 
-    console.log(`[CheckReport] Predicted URL: ${url} - Status: ${response}`);
-
-    if (response.status === 404 || response.status !== 200) {
-      console.log(`[${response.status}] Unexpected status for: ${url}`);
-      return false;
-    }
-
-    const contentType = response.headers['content-type'];
-    const isPDF = PDF_CONTENT_TYPES.includes(contentType) || url.toLowerCase().endsWith('.pdf');
-
-    let pageContent = '';
-    if (isPDF) {
-      try {
-        const pdfData = await pdf(response.data);
-        pageContent = pdfData.text.toLowerCase();
-      } catch (pdfError) {
-        console.log('[PDF] Parsing failed:', pdfError);
-        return false;
-      }
-    } else {
-      pageContent = response.data.toString().toLowerCase();
-    }
-
-    const quarterlyReportKeywords = [
-      'revenue',
-      'eps',
-      'net income',
-      'guidance',
-      'quarterly',
-      'gaap',
-    ];
-    const hasFinancialTerms = quarterlyReportKeywords.some((term) => pageContent.includes(term));
-    console.log(`[CheckReport] Financial terms found: ${hasFinancialTerms}`);
-    return hasFinancialTerms;
-  } catch (error) {
-    console.log('[Error] Checking report availability:', error);
-    return false;
-  }
-};
-
-const pollForReport = async (predictedUrl: string): Promise<string | null> => {
+const scanForMatchingReportUrl = async (
+  predictedUrl: string,
+  reportsPageUrl: string,
+  quarter: string,
+  year: string
+): Promise<string | null> => {
   const startTime = Date.now();
-  let attempt = 0;
 
-  while (Date.now() - startTime < MAX_POLLING_TIME) {
-    attempt++;
-    console.log(`[PollAttempt] #${attempt}`);
+  while (Date.now() - startTime < MAX_SCANING_TIME) {
+    console.log(`[scanAttempt: Puppeteer Page Scan] #${Date.now()}`);
 
     try {
-      const isAvailable = await checkReportAvailability(predictedUrl);
-      if (isAvailable) {
-        console.log(`[ReportFound] At: ${predictedUrl}`);
-        return predictedUrl;
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
+      );
+
+      await page.goto(reportsPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+      const html = await page.content();
+      await browser.close();
+
+      const $ = cheerio.load(html);
+
+      const hrefs = new Set<string>();
+      $('a[href]').each((_, el) => {
+        const href = $(el).attr('href');
+        if (href && !href.startsWith('#')) {
+          const fullHref = href.startsWith('http') ? href : new URL(href, reportsPageUrl).href;
+          hrefs.add(fullHref);
+        }
+      });
+
+      let links = Array.from(hrefs);
+      console.log(`[PageScan] Found ${links.length} links`);
+
+      links = links.filter((link) => {
+        try {
+          const { pathname } = new URL(link);
+          return pathname.length > 10 && pathname !== '/' && pathname !== '';
+        } catch {
+          return false;
+        }
+      });
+
+      const matches = fuzz.extract(predictedUrl, links, {
+        scorer: fuzz.token_set_ratio,
+        returnObjects: true,
+        limit: 25,
+      });
+
+      console.log('[FuzzyMatch] Best matches:', matches, '[FuzzyMatch] length:', matches.length);
+
+      for (const match of matches) {
+        if (
+          match.score > 85 &&
+          hasCorrectQuarter(match.choice, quarter) &&
+          hasCorrectYear(match.choice, year)
+        ) {
+          const isValid = await isEarningsReport(match.choice);
+          if (isValid) return match.choice;
+        }
       }
-      console.log(`[Retry] Waiting ${POLLING_INTERVAL / 1000}s...`);
-      await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL));
     } catch (error) {
-      throw error;
+      console.error('[Error] Puppeteer scaning error:', error);
     }
+
+    await new Promise((resolve) => setTimeout(resolve, SCANING_INTERVAL));
   }
+
   return null;
 };
 
@@ -86,32 +98,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { quarter, year, previousReportUrl, reportsPageUrl } = req.body;
-    console.log('[Request]', { previousReportUrl, reportsPageUrl, quarter, year });
 
     const predictedUrl = predictNextQuarterUrl(previousReportUrl, quarter, year);
     console.log({ 'Predicted URL': predictedUrl });
 
-    const reportUrl = await pollForReport(predictedUrl);
+    const reportUrl = await scanForMatchingReportUrl(predictedUrl, reportsPageUrl, quarter, year);
 
     if (!reportUrl) {
-      return res.status(408).json({ error: 'Maximum polling time reached. Report not found.' });
+      return res.status(408).json({ error: 'Maximum scaning time reached. Report not found.' });
     }
 
     console.log('[ContentRequest] Fetching content...');
-    let reportText = '';
+    let reportContent = '';
     const contentResponse = await axios.get(reportUrl, {
       responseType: 'arraybuffer',
       timeout: 15000,
     });
 
     const contentType = contentResponse.headers['content-type'];
-    const isPDF =
-      PDF_CONTENT_TYPES.includes(contentType) || reportUrl.toLowerCase().endsWith('.pdf');
+    const isPDF = isPDFFile(contentType, reportUrl);
 
     if (isPDF) {
       try {
         const pdfData = await pdf(contentResponse.data);
-        reportText = pdfData.text;
+        reportContent = pdfData.text;
       } catch (pdfError) {
         console.log('[PDF] Parsing failed:', pdfError);
         return res.status(500).json({ error: 'Failed to extract PDF text' });
@@ -121,42 +131,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
         timeout: 15000,
       });
-      reportText = diffbotResponse.data.objects[0]?.text;
+      reportContent = diffbotResponse.data.objects[0]?.text;
     }
 
-    if (!reportText) return res.status(500).json({ error: 'Failed to extract report text' });
+    if (!reportContent) return res.status(500).json({ error: 'Failed to extract report text' });
 
     console.log('[OpenAIRequest] Analyzing report...');
-    const openAIResponse = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-4-turbo',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: USER_PROMPT(reportText) },
-        ],
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000,
-      }
-    );
+    // const openAIResponse = await axios.post(
+    //   'https://api.openai.com/v1/chat/completions',
+    //   {
+    //     model: 'gpt-4-turbo',
+    //     messages: [
+    //       { role: 'system', content: SYSTEM_PROMPT },
+    //       { role: 'user', content: USER_PROMPT(reportContent) },
+    //     ],
+    //     temperature: 0.7,
+    //   },
+    //   {
+    //     headers: {
+    //       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    //       'Content-Type': 'application/json',
+    //     },
+    //     timeout: 30000,
+    //   }
+    // );
 
-    const responseContent = openAIResponse.data.choices[0]?.message?.content;
-    if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
+    // const responseContent = openAIResponse.data.choices[0]?.message?.content;
+    // if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
 
-    const parsedResponse = JSON.parse(responseContent);
-    return res.status(200).json({
-      rating: parsedResponse.rating,
-      positives: parsedResponse.positives,
-      negatives: parsedResponse.negatives,
-      reportUrl: reportUrl,
-    });
-    // res.status(200).json(reportText);
+    // const parsedResponse = JSON.parse(responseContent);
+    // return res.status(200).json({
+    //   rating: parsedResponse.rating,
+    //   positives: parsedResponse.positives,
+    //   negatives: parsedResponse.negatives,
+    //   reportUrl: reportUrl,
+    // });
+    return res.status(200).json(reportContent);
   } catch (error) {
     console.error('[FatalError]', error);
     return res.status(500).json({ error: 'Internal server error' });

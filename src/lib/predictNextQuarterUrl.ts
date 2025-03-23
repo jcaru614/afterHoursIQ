@@ -1,16 +1,10 @@
+import { getOrdinalSuffix } from '@/utils/serverSide';
+
 export function predictNextQuarterUrl(
   currentUrl: string,
   targetQuarter: number,
   targetYear: string
 ): string {
-  function getOrdinalSuffix(num: number): string {
-    const j = num % 10;
-    const k = num % 100;
-    if (j === 1 && k !== 11) return 'st';
-    if (j === 2 && k !== 12) return 'nd';
-    if (j === 3 && k !== 13) return 'rd';
-    return 'th';
-  }
   const url = new URL(currentUrl);
   const [domain, ...pathParts] = url.pathname.split('/').filter(Boolean);
 
@@ -28,13 +22,11 @@ export function predictNextQuarterUrl(
     },
     {
       regex: /(first|second|third|fourth)[- ]?quarter/gi,
-      replace: () =>
-        ['first', 'second', 'third', 'fourth'][targetQuarter - 1] + '-quarter',
+      replace: () => ['first', 'second', 'third', 'fourth'][targetQuarter - 1] + '-quarter',
     },
     {
       regex: /([1-4])(st|nd|rd|th)[- ]?quarter/gi,
-      replace: () =>
-        `${targetQuarter}${getOrdinalSuffix(targetQuarter)}-quarter`,
+      replace: () => `${targetQuarter}${getOrdinalSuffix(targetQuarter)}-quarter`,
     },
   ];
 
