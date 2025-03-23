@@ -4,16 +4,21 @@ import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
 import { setCompanyDomain, setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
+import { getFgiColor, getVixColor } from '@/utils/clientSide';
 
 export default function Home() {
   const dispatch = useDispatch();
 
-  const [url, setUrl] = useState<string>('');
+  const [reportsPageUrl, setReportsPageUrl] = useState<string>('');
+  const [previousReportUrl, setPreviousReportUrl] = useState<string>('');
   const [quarter, setQuarter] = useState<string>('');
   const [year, setYear] = useState<string>('');
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const currentYear = new Date().getFullYear();
-  const validYears = [currentYear, currentYear - 1].map((year) => year.toString().slice(-2));
+  const validYears = [currentYear - 1, currentYear, currentYear + 1].map((year) =>
+    year.toString().slice(-2)
+  );
+
   const [fgiData, setFgiData] = useState<any>(null);
   const [vixData, setVixData] = useState<any>(null);
 
@@ -23,7 +28,6 @@ export default function Home() {
 
   const fetchMarketData = async () => {
     try {
-      console.log('Fetching market data...');
       const response = await axios.get('/api/fetchMarketData');
       console.log('Response received:', response.data);
       setVixData(response.data.vix);
@@ -37,9 +41,9 @@ export default function Home() {
     fetchMarketData();
   }, []);
 
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePreviousReportUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
-    setUrl(newUrl);
+    setPreviousReportUrl(newUrl);
     if (!newUrl) {
       dispatch(setCompanyDomain(null));
       return;
@@ -49,9 +53,6 @@ export default function Home() {
 
   const fetchCompanyOverview = async (url: string) => {
     if (!url.trim()) return;
-
-    console.log('Fetching company overview for URL:', url);
-
     try {
       const { data } = await axios.get(`/api/fetchCompanyLogo?url=${url}`);
       console.log('Data fetched:', data);
@@ -78,16 +79,15 @@ export default function Home() {
     setIsScanning(true);
     try {
       const { data } = await axios.post('/api/fetchReport', {
-        url,
+        reportsPageUrl,
+        previousReportUrl,
         quarter,
         year,
       });
 
-      console.log('data ', data);
       dispatch(setReportData(data));
     } catch (error) {
       if (error.response?.status === 408) {
-        console.log('Polling timeout reached:', error.response.data.error);
         dispatch(setStatusCode(error.response.status));
       } else {
         console.error('Error fetching the report:', error);
@@ -132,7 +132,7 @@ export default function Home() {
                 <div className="flex items-center space-x-2">
                   <span className="font-semibold text-lg text-white">F&G</span>
                   <div
-                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${fgiData.value <= 20 ? 'bg-red-900 text-white' : fgiData.value <= 40 ? 'bg-red-600 text-white' : fgiData.value <= 60 ? 'bg-yellow-500 text-black' : fgiData.value <= 80 ? 'bg-green-500 text-black' : 'bg-green-800 text-white'}`}
+                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getFgiColor(fgiData.value)}`}
                   >
                     {fgiData.value}
                   </div>
@@ -142,7 +142,7 @@ export default function Home() {
                 <div className="flex items-center space-x-2">
                   <span className="font-semibold text-lg text-white">VIX</span>
                   <div
-                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${vixData.value > 35 ? 'bg-red-900 text-white' : vixData.value > 25 ? 'bg-red-600 text-white' : vixData.value >= 16 ? 'bg-yellow-500 text-black' : vixData.value >= 11 ? 'bg-green-500 text-black' : 'bg-green-800 text-white'}`}
+                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getVixColor(vixData.value)}}`}
                   >
                     {vixData.value}
                   </div>
@@ -169,10 +169,17 @@ export default function Home() {
           <div className="flex flex-col w-full col-span-1">
             <input
               type="url"
-              placeholder="Enter previous report URL"
+              placeholder="Enter the investor relations page url"
               className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-              value={url}
-              onChange={handleUrlChange}
+              value={reportsPageUrl}
+              onChange={(e) => setReportsPageUrl(e.target.value)}
+            />
+            <input
+              type="url"
+              placeholder="Enter the previous quarterly report url"
+              className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              value={previousReportUrl}
+              onChange={handlePreviousReportUrlChange}
             />
             <div className="flex w-full justify-between mb-4">
               <select
@@ -180,7 +187,7 @@ export default function Home() {
                 value={quarter}
                 onChange={handleQuarterChange}
               >
-                <option value="">Select Quarter</option>
+                <option value="">Select Upcoming Quarter</option>
                 <option value="1">Q1</option>
                 <option value="2">Q2</option>
                 <option value="3">Q3</option>
@@ -191,10 +198,10 @@ export default function Home() {
                 value={year}
                 onChange={handleYearChange}
               >
-                <option value="">Select Year</option>
+                <option value="">Select Appropriate Year</option>
                 {validYears.map((yearOption) => (
                   <option key={yearOption} value={yearOption}>
-                    {yearOption}
+                    {`20${yearOption}`}
                   </option>
                 ))}
               </select>
@@ -202,9 +209,9 @@ export default function Home() {
 
             <div className="flex w-full gap-4">
               <button
-                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !url || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
                 onClick={handleStartScanning}
-                disabled={isScanning || !url || !quarter || !year}
+                disabled={isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year}
               >
                 {isScanning ? 'Scanning...' : 'Start Scanning'}
               </button>
