@@ -32,12 +32,3 @@ export const hasCorrectYear = (url: string, year: string): boolean => {
     lower.includes(fullYear)
   );
 };
-
-export function isPDFFile(contentType: string, url: string): boolean {
-  const PDF_CONTENT_TYPES = ['application/pdf', 'application/octet-stream'];
-
-  const isTypePdf = PDF_CONTENT_TYPES.includes(contentType.toLowerCase());
-  const isExtensionPdf = url.toLowerCase().endsWith('.pdf');
-
-  return isTypePdf || isExtensionPdf;
-}

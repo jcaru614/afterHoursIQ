@@ -2,13 +2,12 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
-import { hasCorrectQuarter, hasCorrectYear, isPDFFile } from '@/utils/serverSide';
+import { hasCorrectQuarter, hasCorrectYear } from '@/utils/serverSide';
 import pdf from 'pdf-parse';
 import { predictNextQuarterUrl } from '@/lib/predictNextQuarterUrl';
 import * as cheerio from 'cheerio';
 import * as fuzz from 'fuzzball';
 import puppeteer from 'puppeteer';
-import { isEarningsReport } from '@/lib/isEarningsReport';
 
 const SCANING_INTERVAL = 60 * 1000;
 const MAX_SCANING_TIME = 3 * 60 * 1000;
@@ -66,7 +65,7 @@ const scanForMatchingReportUrl = async (
       const matches = fuzz.extract(predictedUrl, links, {
         scorer: fuzz.token_set_ratio,
         returnObjects: true,
-        limit: 25,
+        limit: 15,
       });
 
       console.log('[FuzzyMatch] Best matches:', matches, '[FuzzyMatch] length:', matches.length);
@@ -77,8 +76,7 @@ const scanForMatchingReportUrl = async (
           hasCorrectQuarter(match.choice, quarter) &&
           hasCorrectYear(match.choice, year)
         ) {
-          const isValid = await isEarningsReport(match.choice);
-          if (isValid) return match.choice;
+          return match.choice;
         }
       }
     } catch (error) {
@@ -110,28 +108,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log('[ContentRequest] Fetching content...');
     let reportContent = '';
-    const contentResponse = await axios.get(reportUrl, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-    });
-
-    const contentType = contentResponse.headers['content-type'];
-    const isPDF = isPDFFile(contentType, reportUrl);
+    const isAspx = new URL(reportUrl).pathname.toLowerCase().includes('.aspx');
+    const isPDF = new URL(reportUrl).pathname.toLowerCase().includes('.pdf');
 
     if (isPDF) {
       try {
-        const pdfData = await pdf(contentResponse.data);
-        reportContent = pdfData.text;
+        const pdfResponse = await axios.get(reportUrl, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+        });
+        const pdfData = await pdf(pdfResponse.data);
+        reportContent = pdfData.text.replace(/\s+/g, ' ').trim();
       } catch (pdfError) {
         console.log('[PDF] Parsing failed:', pdfError);
         return res.status(500).json({ error: 'Failed to extract PDF text' });
       }
-    } else {
-      const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
-        params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
-        timeout: 15000,
+    } else if (isAspx) {
+      console.log('[ASPX] Parsing via Puppeteer');
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
-      reportContent = diffbotResponse.data.objects[0]?.text;
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
+      );
+      await page.goto(reportUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      const html = await page.content();
+      await browser.close();
+
+      const $ = cheerio.load(html);
+      reportContent = $('body').text().replace(/\s+/g, ' ').trim();
+    } else {
+      try {
+        const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
+          params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
+          timeout: 15000,
+        });
+        reportContent = diffbotResponse.data.objects[0]?.text;
+      } catch (diffbotError) {
+        console.log('[Diffbot] Fallback failed, trying cheerio');
+        const fallbackResponse = await axios.get(reportUrl, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+        });
+        const html = fallbackResponse.data.toString('utf-8');
+        const $ = cheerio.load(html);
+        reportContent = $('body').text().replace(/\s+/g, ' ').trim();
+      }
     }
 
     if (!reportContent) return res.status(500).json({ error: 'Failed to extract report text' });
