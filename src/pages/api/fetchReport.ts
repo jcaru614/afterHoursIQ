@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
-import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
 import { hasCorrectQuarter, hasCorrectYear } from '@/utils/serverSide';
-import pdf from 'pdf-parse';
 import { predictNextQuarterUrl } from '@/lib/predictNextQuarterUrl';
+import { getChatCompletion } from '@/lib/getChatCompletion';
+import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
+import pdf from 'pdf-parse';
 import * as cheerio from 'cheerio';
 import * as fuzz from 'fuzzball';
 import puppeteer from 'puppeteer';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
 
 const SCANING_INTERVAL = 60 * 1000;
 const MAX_SCANING_TIME = 3 * 60 * 1000;
@@ -137,8 +140,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const html = await page.content();
       await browser.close();
 
-      const $ = cheerio.load(html);
-      reportContent = $('body').text().replace(/\s+/g, ' ').trim();
+      const dom = new JSDOM(html, { url: reportUrl });
+      const reader = new Readability(dom.window.document);
+      const article = reader.parse();
+
+      reportContent = article?.textContent?.replace(/\s+/g, ' ').trim() || '';
     } else {
       try {
         const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
@@ -160,36 +166,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!reportContent) return res.status(500).json({ error: 'Failed to extract report text' });
 
-    console.log('[OpenAIRequest] Analyzing report...');
-    // const openAIResponse = await axios.post(
-    //   'https://api.openai.com/v1/chat/completions',
-    //   {
-    //     model: 'gpt-4-turbo',
-    //     messages: [
-    //       { role: 'system', content: SYSTEM_PROMPT },
-    //       { role: 'user', content: USER_PROMPT(reportContent) },
-    //     ],
-    //     temperature: 0.7,
-    //   },
-    //   {
-    //     headers: {
-    //       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    //       'Content-Type': 'application/json',
-    //     },
-    //     timeout: 30000,
-    //   }
-    // );
+    // const aiResponseContent = await getChatCompletion(SYSTEM_PROMPT, USER_PROMPT(reportContent));
+    // const parsedResponse = JSON.parse(aiResponseContent);
 
-    // const responseContent = openAIResponse.data.choices[0]?.message?.content;
-    // if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
-
-    // const parsedResponse = JSON.parse(responseContent);
     // return res.status(200).json({
     //   rating: parsedResponse.rating,
     //   positives: parsedResponse.positives,
     //   negatives: parsedResponse.negatives,
     //   reportUrl: reportUrl,
     // });
+
     return res.status(200).json(reportContent);
   } catch (error) {
     console.error('[FatalError]', error);
