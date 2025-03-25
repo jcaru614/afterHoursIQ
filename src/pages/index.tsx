@@ -213,7 +213,18 @@ export default function Home() {
                 onClick={handleStartScanning}
                 disabled={isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year}
               >
-                {isScanning ? 'Scanning...' : 'Start Scanning'}
+                {isScanning ? (
+                  <span className="relative inline-block">
+                    Scanning
+                    <span className="inline-block ml-2">
+                      <span className="dot inline-block animate-dot-pulse">.</span>
+                      <span className="dot inline-block animate-dot-pulse ml-1">.</span>
+                      <span className="dot inline-block animate-dot-pulse ml-1">.</span>
+                    </span>
+                  </span>
+                ) : (
+                  'Start Scanning'
+                )}
               </button>
             </div>
           </div>

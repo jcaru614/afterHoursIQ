@@ -1,36 +1,35 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
+import {
+  hasCorrectQuarter,
+  hasCorrectYear,
+  FAST_SCAN_DURATION,
+  SCAN_INTERVAL_FAST,
+  SCAN_INTERVAL_SLOW,
+  MAX_SCANING_TIME,
+} from '@/utils/serverSide';
+import { predictNextQuarterUrl, getChatCompletion } from '@/lib';
 import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
-import { hasCorrectQuarter, hasCorrectYear, isPDFFile } from '@/utils/serverSide';
 import pdf from 'pdf-parse';
-import { predictNextQuarterUrl } from '@/lib/predictNextQuarterUrl';
 import * as cheerio from 'cheerio';
 import * as fuzz from 'fuzzball';
-import puppeteer from 'puppeteer';
-import { isEarningsReport } from '@/lib/isEarningsReport';
-
-const SCANING_INTERVAL = 60 * 1000;
-const MAX_SCANING_TIME = 3 * 60 * 1000;
+import puppeteer, { Browser, Page } from 'puppeteer';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
 
 const scanForMatchingReportUrl = async (
   predictedUrl: string,
   reportsPageUrl: string,
   quarter: string,
-  year: string
+  year: string,
+  page: Page
 ): Promise<string | null> => {
   const startTime = Date.now();
 
   while (Date.now() - startTime < MAX_SCANING_TIME) {
-    console.log(`[scanAttempt: Puppeteer Page Scan] #${Date.now()}`);
+    console.log(`[scanAttempt: Puppeteer Page Scan]`);
 
     try {
-      const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-
-      const page = await browser.newPage();
       await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
       );
@@ -38,11 +37,9 @@ const scanForMatchingReportUrl = async (
       await page.goto(reportsPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
       const html = await page.content();
-      await browser.close();
-
       const $ = cheerio.load(html);
-
       const hrefs = new Set<string>();
+
       $('a[href]').each((_, el) => {
         const href = $(el).attr('href');
         if (href && !href.startsWith('#')) {
@@ -51,10 +48,7 @@ const scanForMatchingReportUrl = async (
         }
       });
 
-      let links = Array.from(hrefs);
-      console.log(`[PageScan] Found ${links.length} links`);
-
-      links = links.filter((link) => {
+      const links = Array.from(hrefs).filter((link) => {
         try {
           const { pathname } = new URL(link);
           return pathname.length > 10 && pathname !== '/' && pathname !== '';
@@ -66,10 +60,10 @@ const scanForMatchingReportUrl = async (
       const matches = fuzz.extract(predictedUrl, links, {
         scorer: fuzz.token_set_ratio,
         returnObjects: true,
-        limit: 25,
+        limit: 15,
       });
 
-      console.log('[FuzzyMatch] Best matches:', matches, '[FuzzyMatch] length:', matches.length);
+      console.log('[FuzzyMatch] Best matches:', matches);
 
       for (const match of matches) {
         if (
@@ -77,98 +71,121 @@ const scanForMatchingReportUrl = async (
           hasCorrectQuarter(match.choice, quarter) &&
           hasCorrectYear(match.choice, year)
         ) {
-          const isValid = await isEarningsReport(match.choice);
-          if (isValid) return match.choice;
+          return match.choice;
         }
       }
     } catch (error) {
-      console.error('[Error] Puppeteer scaning error:', error);
+      console.error('[Puppeteer Scan Error]', error);
     }
-
-    await new Promise((resolve) => setTimeout(resolve, SCANING_INTERVAL));
+    const elapsed = Date.now() - startTime;
+    const delay = elapsed < FAST_SCAN_DURATION ? SCAN_INTERVAL_FAST : SCAN_INTERVAL_SLOW;
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
+  console.warn('[Scan Timeout] No matching report found');
   return null;
 };
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
     const { quarter, year, previousReportUrl, reportsPageUrl } = req.body;
-
     const predictedUrl = predictNextQuarterUrl(previousReportUrl, quarter, year);
     console.log({ 'Predicted URL': predictedUrl });
 
-    const reportUrl = await scanForMatchingReportUrl(predictedUrl, reportsPageUrl, quarter, year);
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    page = await browser.newPage();
+
+    const reportUrl = await scanForMatchingReportUrl(
+      predictedUrl,
+      reportsPageUrl,
+      quarter,
+      year,
+      page
+    );
 
     if (!reportUrl) {
-      return res.status(408).json({ error: 'Maximum scaning time reached. Report not found.' });
+      return res.status(408).json({ error: 'Maximum scanning time reached. Report not found.' });
     }
 
     console.log('[ContentRequest] Fetching content...');
     let reportContent = '';
-    const contentResponse = await axios.get(reportUrl, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-    });
-
-    const contentType = contentResponse.headers['content-type'];
-    const isPDF = isPDFFile(contentType, reportUrl);
+    const isAspx = new URL(reportUrl).pathname.toLowerCase().includes('.aspx');
+    const isPDF = new URL(reportUrl).pathname.toLowerCase().includes('.pdf');
 
     if (isPDF) {
       try {
-        const pdfData = await pdf(contentResponse.data);
-        reportContent = pdfData.text;
-      } catch (pdfError) {
-        console.log('[PDF] Parsing failed:', pdfError);
+        const pdfResponse = await axios.get(reportUrl, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+        });
+        const pdfData = await pdf(pdfResponse.data);
+        reportContent = pdfData.text.replace(/\s+/g, ' ').trim();
+      } catch (error) {
+        console.error('[PDF Parsing Error]', error);
         return res.status(500).json({ error: 'Failed to extract PDF text' });
       }
+    } else if (isAspx) {
+      try {
+        await page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
+        );
+        await page.goto(reportUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        const html = await page.content();
+
+        const dom = new JSDOM(html, { url: reportUrl });
+        const reader = new Readability(dom.window.document);
+        const article = reader.parse();
+
+        reportContent = article?.textContent?.replace(/\s+/g, ' ').trim() || '';
+      } catch (error) {
+        console.error('[ASPX Parsing Error]', error);
+        return res.status(500).json({ error: 'Failed to extract ASPX report content' });
+      }
     } else {
-      const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
-        params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
-        timeout: 15000,
-      });
-      reportContent = diffbotResponse.data.objects[0]?.text;
+      try {
+        const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
+          params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
+          timeout: 15000,
+        });
+        reportContent = diffbotResponse.data.objects[0]?.text || '';
+      } catch (error) {
+        console.error('[Diffbot Parsing Error]', error);
+        return res.status(500).json({ error: 'Failed to extract HTML report via Diffbot' });
+      }
     }
 
-    if (!reportContent) return res.status(500).json({ error: 'Failed to extract report text' });
+    if (!reportContent) {
+      console.error('[ContentError] Report content is empty after parsing.');
+      return res.status(500).json({ error: 'Failed to extract report text' });
+    }
 
-    console.log('[OpenAIRequest] Analyzing report...');
-    // const openAIResponse = await axios.post(
-    //   'https://api.openai.com/v1/chat/completions',
-    //   {
-    //     model: 'gpt-4-turbo',
-    //     messages: [
-    //       { role: 'system', content: SYSTEM_PROMPT },
-    //       { role: 'user', content: USER_PROMPT(reportContent) },
-    //     ],
-    //     temperature: 0.7,
-    //   },
-    //   {
-    //     headers: {
-    //       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    //       'Content-Type': 'application/json',
-    //     },
-    //     timeout: 30000,
-    //   }
-    // );
+    const aiResponseContent = await getChatCompletion(SYSTEM_PROMPT, USER_PROMPT(reportContent));
+    const parsedResponse = JSON.parse(aiResponseContent);
 
-    // const responseContent = openAIResponse.data.choices[0]?.message?.content;
-    // if (!responseContent) return res.status(500).json({ error: 'AI analysis failed' });
+    return res.status(200).json({
+      rating: parsedResponse.rating,
+      positives: parsedResponse.positives,
+      negatives: parsedResponse.negatives,
+      reportUrl: reportUrl,
+    });
 
-    // const parsedResponse = JSON.parse(responseContent);
-    // return res.status(200).json({
-    //   rating: parsedResponse.rating,
-    //   positives: parsedResponse.positives,
-    //   negatives: parsedResponse.negatives,
-    //   reportUrl: reportUrl,
-    // });
-    return res.status(200).json(reportContent);
+    // return res.status(200).json({ predictedUrl, reportUrl, reportContent });
   } catch (error) {
     console.error('[FatalError]', error);
     return res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }

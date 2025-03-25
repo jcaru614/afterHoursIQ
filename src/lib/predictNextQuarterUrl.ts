@@ -1,5 +1,12 @@
 import { getOrdinalSuffix } from '@/utils/serverSide';
 
+function replacePattern(
+  part: string,
+  patterns: { regex: RegExp; replace: (substring: string, ...args: any[]) => string }[]
+): string {
+  return patterns.reduce((newPart, { regex, replace }) => newPart.replace(regex, replace), part);
+}
+
 export function predictNextQuarterUrl(
   currentUrl: string,
   targetQuarter: number,
@@ -11,10 +18,8 @@ export function predictNextQuarterUrl(
   const quarterPatterns = [
     {
       regex: /q([1-4])/gi,
-      replace: (match, quarter) => {
-        const isUpperCase = match[0] === 'Q';
-        return isUpperCase ? `Q${targetQuarter}` : `q${targetQuarter}`;
-      },
+      replace: (match: string, quarter: string) =>
+        match[0] === 'Q' ? `Q${targetQuarter}` : `q${targetQuarter}`,
     },
     {
       regex: /quarter[- ]?([1-4])/gi,
@@ -33,27 +38,22 @@ export function predictNextQuarterUrl(
   const yearPatterns = [
     {
       regex: /\b(FY)?(\d{2}|\d{4})\b/gi,
-      replace: (match, fyPrefix, yearPart) => {
+      replace: (match: string, fyPrefix: string, yearPart: string) => {
         const newYear = yearPart.length === 2 ? targetYear : `20${targetYear}`;
         return fyPrefix ? `FY${newYear}` : newYear;
       },
     },
     {
       regex: /\/(\d{2}|\d{4})\//g,
-      replace: (match, yearPart) =>
+      replace: (match: string, yearPart: string) =>
         yearPart.length === 2 ? `/${targetYear}/` : `/20${targetYear}/`,
     },
   ];
 
   const newPathParts = pathParts.map((part) => {
-    let newPart = part;
-    for (const pattern of quarterPatterns) {
-      newPart = newPart.replace(pattern.regex, pattern.replace);
-    }
-    for (const pattern of yearPatterns) {
-      newPart = newPart.replace(pattern.regex, pattern.replace);
-    }
-    return newPart;
+    let updatedPart = replacePattern(part, quarterPatterns);
+    updatedPart = replacePattern(updatedPart, yearPatterns);
+    return updatedPart;
   });
 
   url.pathname = `/${domain}/${newPathParts.join('/')}`;

@@ -1,12 +1,12 @@
 import axios from 'axios';
 
-function getVixSentiment(vixValue) {
+const getVixSentiment = (vixValue) => {
   if (vixValue < 12) return 'extreme Low volatility';
   if (vixValue < 20) return 'low volatility';
   if (vixValue < 30) return 'normal volatility';
   if (vixValue < 40) return 'high volatility';
   return 'extreme volatility';
-}
+};
 
 export default async function handler(req, res) {
   try {

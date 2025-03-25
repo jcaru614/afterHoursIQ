@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
-export const extractDomain = (url: string): string => {
+const extractDomain = (url: string): string => {
   if (!url) return '';
 
   const urlPattern = /^(https?:\/\/|www\.)[^\s]+$/;
