@@ -30,10 +30,6 @@ const scanForMatchingReportUrl = async (
     console.log(`[scanAttempt: Puppeteer Page Scan]`);
 
     try {
-      await page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
-      );
-
       await page.goto(reportsPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
       const html = await page.content();
@@ -67,16 +63,19 @@ const scanForMatchingReportUrl = async (
 
       for (const match of matches) {
         if (
-          match.score > 85 &&
+          match.score > 90 &&
           hasCorrectQuarter(match.choice, quarter) &&
           hasCorrectYear(match.choice, year)
         ) {
+          const totalTime = (Date.now() - startTime) / 1000;
+          console.log(`[Match Found] in ${totalTime}s`);
           return match.choice;
         }
       }
     } catch (error) {
       console.error('[Puppeteer Scan Error]', error);
     }
+
     const elapsed = Date.now() - startTime;
     const delay = elapsed < FAST_SCAN_DURATION ? SCAN_INTERVAL_FAST : SCAN_INTERVAL_SLOW;
     await new Promise((resolve) => setTimeout(resolve, delay));
@@ -85,6 +84,7 @@ const scanForMatchingReportUrl = async (
   console.warn('[Scan Timeout] No matching report found');
   return null;
 };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   let browser: Browser | null = null;
   let page: Page | null = null;
@@ -104,6 +104,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     page = await browser.newPage();
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
+    );
 
     const reportUrl = await scanForMatchingReportUrl(
       predictedUrl,
@@ -136,9 +140,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } else if (isAspx) {
       try {
-        await page.setUserAgent(
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
-        );
         await page.goto(reportUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         const html = await page.content();
 
