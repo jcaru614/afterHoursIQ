@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export async function getChatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
-  console.log('[OpenAIRequest] Analyzing Prompts...');
+  console.log('[OpenAIRequest] Analyzing Prompts...', userPrompt);
   const response = await axios.post(
     'https://api.openai.com/v1/chat/completions',
     {

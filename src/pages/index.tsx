@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
-import { RatingMeter, ReportSummary, Alert, Navbar, BrandLogo } from '@/components';
+import { useState, useEffect } from 'react';
+import { RatingMeter, ReportSummary, Alert, Navbar, CompanyLogo } from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
+import { FaCheckCircle, FaSpinner, FaTimesCircle } from 'react-icons/fa';
 import { setCompanyDomain, setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
 import { getFgiColor, getVixColor } from '@/utils/clientSide';
@@ -9,54 +10,84 @@ import { getFgiColor, getVixColor } from '@/utils/clientSide';
 export default function Home() {
   const dispatch = useDispatch();
 
-  const [reportsPageUrl, setReportsPageUrl] = useState<string>('');
-  const [previousReportUrl, setPreviousReportUrl] = useState<string>('');
-  const [quarter, setQuarter] = useState<string>('');
-  const [year, setYear] = useState<string>('');
-  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [reportsPageUrl, setReportsPageUrl] = useState('');
+  const [isReportsPageUrlValid, setIsReportsPageUrlValid] = useState<boolean | null>(null);
+  const [isValidatingReportsPageUrl, setIsValidatingReportsPageUrl] = useState(false);
+
+  const [previousReportUrl, setPreviousReportUrl] = useState('');
+  const [isPreviousUrlValid, setIsPreviousUrlValid] = useState<boolean | null>(null);
+  const [isValidatingPreviousUrl, setIsValidatingPreviousUrl] = useState(false);
+
+  const [quarter, setQuarter] = useState('');
+  const [year, setYear] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [fearAndGreedIndex, setFearAndGreedIndex] = useState<any>(null);
+  const [vixIndex, setVixIndex] = useState<any>(null);
+  const [includeMacro, setIncludeMacro] = useState(true);
+
   const currentYear = new Date().getFullYear();
   const validYears = [currentYear - 1, currentYear, currentYear + 1].map((year) =>
     year.toString().slice(-2)
   );
 
-  const [fgiData, setFgiData] = useState<any>(null);
-  const [vixData, setVixData] = useState<any>(null);
-
   const { rating, positives, negatives, reportUrl, statusCode, companyDomain } = useSelector(
     (state: RootState) => state.slice
   );
 
-  const fetchMarketData = async () => {
-    try {
-      const response = await axios.get('/api/fetchMarketData');
-      console.log('Response received:', response.data);
-      setVixData(response.data.vix);
-      setFgiData(response.data.fearAndGreed);
-    } catch (error) {
-      console.error('Error fetching market data:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchMarketData();
-  }, []);
-
-  const handlePreviousReportUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newUrl = e.target.value;
-    setPreviousReportUrl(newUrl);
-    if (!newUrl) {
-      dispatch(setCompanyDomain(null));
+  const validateUrl = async (
+    url: string,
+    setValid: (val: boolean | null) => void,
+    setLoading: (val: boolean) => void
+  ) => {
+    if (!url.trim()) {
+      setValid(null);
       return;
     }
-    fetchCompanyOverview(newUrl);
+
+    try {
+      new URL(url);
+    } catch {
+      setValid(false);
+      return;
+    }
+
+    setLoading(true);
+    setValid(null);
+
+    try {
+      const res = await axios.get(`/api/validateReportUrl?url=${encodeURIComponent(url)}`);
+      setValid(res.status === 200 && res.data.valid === true);
+    } catch {
+      setValid(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const fetchCompanyOverview = async (url: string) => {
+  const handleReportsPageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrl = e.target.value;
+    setReportsPageUrl(newUrl);
+
+    if (!newUrl) {
+      dispatch(setCompanyDomain(null));
+      setIsReportsPageUrlValid(null);
+      return;
+    }
+
+    fetchCompanyLogo(newUrl);
+    validateUrl(newUrl, setIsReportsPageUrlValid, setIsValidatingReportsPageUrl);
+  };
+
+  const handlePreviousReportUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value;
+    setPreviousReportUrl(url);
+    validateUrl(url, setIsPreviousUrlValid, setIsValidatingPreviousUrl);
+  };
+
+  const fetchCompanyLogo = async (url: string) => {
     if (!url.trim()) return;
     try {
       const { data } = await axios.get(`/api/fetchCompanyLogo?url=${url}`);
-      console.log('Data fetched:', data);
-
       if (data) {
         dispatch(setCompanyDomain(data.domain));
       }
@@ -66,25 +97,29 @@ export default function Home() {
   };
 
   const handleQuarterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setQuarter(value);
+    setQuarter(e.target.value);
   };
 
   const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setYear(value);
+    setYear(e.target.value);
   };
 
   const handleStartScanning = async () => {
     setIsScanning(true);
     try {
-      const { data } = await axios.post('/api/fetchReport', {
+      const requestBody = {
         reportsPageUrl,
         previousReportUrl,
         quarter,
         year,
-      });
-
+        ...(includeMacro && fearAndGreedIndex && vixIndex
+          ? {
+              fearAndGreedIndex: fearAndGreedIndex,
+              vixIndex: vixIndex,
+            }
+          : {}),
+      };
+      const { data } = await axios.post('/api/fetchReportInsights', requestBody);
       dispatch(setReportData(data));
     } catch (error) {
       if (error.response?.status === 408) {
@@ -96,6 +131,31 @@ export default function Home() {
       setIsScanning(false);
     }
   };
+
+  useEffect(() => {
+    const fetchMarketSentiment = async () => {
+      try {
+        const response = await axios.get('/api/fetchMarketSentiment');
+        setVixIndex(response.data.vix);
+        setFearAndGreedIndex(response.data.fearAndGreed);
+      } catch (error) {
+        console.error('Error fetching market data:', error);
+      }
+    };
+    fetchMarketSentiment();
+  }, []);
+
+  const isStartScanningDisabled =
+    !(
+      isReportsPageUrlValid === true &&
+      isPreviousUrlValid === true &&
+      !isValidatingReportsPageUrl &&
+      !isValidatingPreviousUrl &&
+      reportsPageUrl &&
+      previousReportUrl &&
+      quarter &&
+      year
+    ) || isScanning;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -120,34 +180,40 @@ export default function Home() {
                     {companyDomain.replace('.com', '')}
                   </h2>
 
-                  <div className="flex items-center justify-center w-16 h-16">
-                    <BrandLogo domain={companyDomain} />
+                  <div className="flex items-center justify-center">
+                    <CompanyLogo domain={companyDomain} />
                   </div>
                 </>
               )}
             </div>
 
-            {fgiData && vixData && (
-              <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center space-y-2">
-                <div className="flex items-center space-x-2">
-                  <span className="font-semibold text-lg text-white">F&G</span>
-                  <div
-                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getFgiColor(fgiData.value)}`}
-                  >
-                    {fgiData.value}
+            {fearAndGreedIndex && vixIndex && (
+              <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center space-y-3 text-white text-sm">
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-lg">FGI</span>
+                    <div
+                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getFgiColor(fearAndGreedIndex.value)}`}
+                    >
+                      {fearAndGreedIndex.value}
+                    </div>
                   </div>
+                  <span className="mt-1 uppercase text-gray-300">
+                    {fearAndGreedIndex.sentiment}
+                  </span>
                 </div>
-                <span className="text-sm">{fgiData.sentiment}</span>
 
-                <div className="flex items-center space-x-2">
-                  <span className="font-semibold text-lg text-white">VIX</span>
-                  <div
-                    className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getVixColor(vixData.value)}}`}
-                  >
-                    {vixData.value}
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-lg">VIX</span>
+                    <div
+                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getVixColor(vixIndex.value)}`}
+                    >
+                      {vixIndex.value}
+                    </div>
                   </div>
+                  <span className="mt-1 uppercase text-gray-300">{vixIndex.sentiment}</span>
                 </div>
-                <span className="text-sm">{vixData.sentiment}</span>
               </div>
             )}
 
@@ -167,20 +233,52 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-2 gap-6 w-full mt-6">
           <div className="flex flex-col w-full col-span-1">
-            <input
-              type="url"
-              placeholder="Enter the investor relations page url"
-              className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-              value={reportsPageUrl}
-              onChange={(e) => setReportsPageUrl(e.target.value)}
-            />
-            <input
-              type="url"
-              placeholder="Enter the previous quarterly report url"
-              className="p-3 rounded-lg border border-gray-300 bg-[#150C34] w-full mb-4 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-              value={previousReportUrl}
-              onChange={handlePreviousReportUrlChange}
-            />
+            <div className="relative w-full mb-4">
+              <input
+                type="url"
+                placeholder="Enter the investor relations page url"
+                className={`p-3 pr-10 rounded-lg border ${
+                  isReportsPageUrlValid === false ? 'border-red-500' : 'border-gray-300'
+                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
+                  isReportsPageUrlValid === false
+                    ? 'focus:ring-red-500 focus:border-red-500'
+                    : 'focus:ring-purple-500 focus:border-purple-500'
+                } transition-all`}
+                value={reportsPageUrl}
+                onChange={handleReportsPageUrlChange}
+              />
+              {isValidatingReportsPageUrl ? (
+                <FaSpinner className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
+              ) : isReportsPageUrlValid === true ? (
+                <FaCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
+              ) : isReportsPageUrlValid === false ? (
+                <FaTimesCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
+              ) : null}
+            </div>
+
+            <div className="relative w-full mb-4">
+              <input
+                type="url"
+                placeholder="Enter the previous quarterly report url"
+                className={`p-3 pr-10 rounded-lg border ${
+                  isPreviousUrlValid === false ? 'border-red-500' : 'border-gray-300'
+                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
+                  isPreviousUrlValid === false
+                    ? 'focus:ring-red-500 focus:border-red-500'
+                    : 'focus:ring-purple-500 focus:border-purple-500'
+                } transition-all`}
+                value={previousReportUrl}
+                onChange={handlePreviousReportUrlChange}
+              />
+              {isValidatingPreviousUrl ? (
+                <FaSpinner className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
+              ) : isPreviousUrlValid === true ? (
+                <FaCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
+              ) : isPreviousUrlValid === false ? (
+                <FaTimesCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
+              ) : null}
+            </div>
+
             <div className="flex w-full justify-between mb-4">
               <select
                 className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
@@ -209,27 +307,39 @@ export default function Home() {
 
             <div className="flex w-full gap-4">
               <button
-                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'}`}
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
+                  isStartScanningDisabled
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'
+                }`}
                 onClick={handleStartScanning}
-                disabled={isScanning || !previousReportUrl || !reportsPageUrl || !quarter || !year}
+                disabled={isStartScanningDisabled}
               >
                 {isScanning ? (
-                  <span className="relative inline-block">
-                    Scanning
-                    <span className="inline-block ml-2">
-                      <span className="dot inline-block animate-dot-pulse">.</span>
-                      <span className="dot inline-block animate-dot-pulse ml-1">.</span>
-                      <span className="dot inline-block animate-dot-pulse ml-1">.</span>
-                    </span>
-                  </span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <span>Scanning</span>
+                    <FaSpinner className="animate-spin text-white w-5 h-5" />
+                  </div>
                 ) : (
                   'Start Scanning'
                 )}
               </button>
+              <div className="flex items-center mb-4">
+                <input
+                  type="checkbox"
+                  id="includeMacro"
+                  checked={includeMacro}
+                  onChange={(e) => setIncludeMacro(e.target.checked)}
+                  className="mr-2 w-5 h-5 accent-purple-600 bg-gray-100 border-gray-300 focus:ring-purple-500"
+                />
+                <label htmlFor="includeMacro" className="text-gray-300 text-sm">
+                  Include Market Sentiment (FGI & VIX)
+                </label>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-center items-center">
+          <div className="rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
             <RatingMeter score={rating} />
           </div>
         </div>

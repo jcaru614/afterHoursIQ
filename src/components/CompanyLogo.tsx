@@ -1,19 +1,16 @@
 import Image from 'next/image';
 import React from 'react';
 
-interface BrandLogoProps {
+interface CompanyLogoProps {
   domain?: string;
 }
 
-const BrandLogo: React.FC<BrandLogoProps> = ({ domain }) => {
+const CompanyLogo: React.FC<CompanyLogoProps> = ({ domain }) => {
   const clientId = process.env.NEXT_PUBLIC_BRAND_FETCH_CLIENT_ID;
 
   const logoUrl = domain ? `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${clientId}` : '';
 
-  console.log('Client ID:', clientId);
-  console.log('Logo URL:', logoUrl);
-
-  const logoSize = 50;
+  const logoSize = 60;
 
   return (
     <div style={{ width: `${logoSize}px`, height: `${logoSize}px` }}>
@@ -32,4 +29,4 @@ const BrandLogo: React.FC<BrandLogoProps> = ({ domain }) => {
     </div>
   );
 };
-export default BrandLogo;
+export default CompanyLogo;

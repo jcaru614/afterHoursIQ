@@ -14,11 +14,11 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
   } else if (normalizedScore === 1) {
     action = 'Strong Short';
   } else if (normalizedScore === 2) {
-    action = 'Modest Short';
+    action = 'Weak Short';
   } else if (normalizedScore === 3) {
-    action = 'Hold';
+    action = 'Neutral / Hold';
   } else if (normalizedScore === 4) {
-    action = 'Modest Buy';
+    action = 'Weak Buy';
   } else if (normalizedScore === 5) {
     action = 'Strong Buy';
   }
@@ -26,6 +26,8 @@ const RatingMeter: React.FC<RatingMeterProps> = ({ score }) => {
   return (
     <div className="flex flex-col items-center">
       <div className="text-white text-2xl font-semibold">{action}</div>
+      <div className="text-gray-300 text-lg mt-1">Rating: {normalizedScore}/5</div>
+
       <div className="relative w-80 h-48">
         <svg viewBox="0 0 120 60" className="w-full h-full">
           <defs>

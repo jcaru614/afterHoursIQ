@@ -9,7 +9,7 @@ import {
   MAX_SCANING_TIME,
 } from '@/utils/serverSide';
 import { predictNextQuarterUrl, getChatCompletion } from '@/lib';
-import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
+import { SYSTEM_PROMPT, USER_PROMPT, USER_PROMPT_ADVANCED } from '@/utils/prompts';
 import pdf from 'pdf-parse';
 import * as cheerio from 'cheerio';
 import * as fuzz from 'fuzzball';
@@ -94,7 +94,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { quarter, year, previousReportUrl, reportsPageUrl } = req.body;
+    const { quarter, year, previousReportUrl, reportsPageUrl, fearAndGreedIndex, vixIndex } =
+      req.body;
     const predictedUrl = predictNextQuarterUrl(previousReportUrl, quarter, year);
     console.log({ 'Predicted URL': predictedUrl });
 
@@ -170,7 +171,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Failed to extract report text' });
     }
 
-    const aiResponseContent = await getChatCompletion(SYSTEM_PROMPT, USER_PROMPT(reportContent));
+    const userPrompt =
+      fearAndGreedIndex && vixIndex
+        ? USER_PROMPT_ADVANCED(reportContent, {
+            fgiValue: parseFloat(fearAndGreedIndex.value),
+            fgiSentiment: fearAndGreedIndex.sentiment,
+            vixValue: parseFloat(vixIndex.value),
+            vixSentiment: vixIndex.sentiment,
+          })
+        : USER_PROMPT(reportContent);
+
+    const aiResponseContent = await getChatCompletion(SYSTEM_PROMPT, userPrompt);
+
     const parsedResponse = JSON.parse(aiResponseContent);
 
     return res.status(200).json({

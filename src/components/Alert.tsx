@@ -11,12 +11,12 @@ const Alert: React.FC<AlertProps> = ({ rating, statusCode }) => {
   useEffect(() => {
     if (rating > 0 || statusCode) {
       setIsVisible(true);
-      const sound = new Audio('/audio/short-beep-alert.wav');
+      const sound = new Audio('/audio/medium-beep-alert.wav');
       sound.play();
 
       const timer = setTimeout(() => {
         setIsVisible(false);
-      }, 60000);
+      }, 80000);
 
       return () => clearTimeout(timer);
     } else {
