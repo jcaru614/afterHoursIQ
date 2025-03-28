@@ -1,13 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
-import puppeteer, { Browser, Page } from 'puppeteer';
-import pdf from 'pdf-parse';
-import { JSDOM } from 'jsdom';
-import { Readability } from '@mozilla/readability';
+import puppeteer from 'puppeteer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  let browser: Browser | null = null;
-  let page: Page | null = null;
+  let browser = null;
 
   try {
     if (req.method !== 'GET') {
@@ -22,7 +18,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       new URL(url);
     } catch {
-      console.warn('[Invalid URL Format]', url);
       return res.status(400).json({ valid: false });
     }
 
@@ -31,15 +26,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (isPDF) {
       try {
-        const response = await axios.get(url, {
-          responseType: 'arraybuffer',
-          timeout: 5000,
-        });
-        const data = await pdf(response.data);
-        if (!data.text.trim()) throw new Error('Empty PDF');
+        const response = await axios.get(url, { timeout: 5000 });
+        if (!response.data || response.data.length < 200) throw new Error('Too small');
         return res.status(200).json({ valid: true });
-      } catch (err) {
-        console.error('[PDF Validation Error]', err);
+      } catch {
         return res.status(400).json({ valid: false });
       }
     }
@@ -47,15 +37,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!isAspx) {
       try {
         const response = await axios.get(url, { timeout: 5000 });
-        const html = response.data;
-        const dom = new JSDOM(html, { url });
-        const reader = new Readability(dom.window.document);
-        const article = reader.parse();
-
-        if (!article?.textContent?.trim()) throw new Error('Empty HTML article');
+        if (!response.data || response.data.length < 200) throw new Error('Too small');
         return res.status(200).json({ valid: true });
-      } catch (err) {
-        console.warn('[HTML Fallback Failed]', err);
+      } catch {
         return res.status(400).json({ valid: false });
       }
     }
@@ -65,28 +49,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
-
-      page = await browser.newPage();
+      const page = await browser.newPage();
       await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
       );
-
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 10000 });
-      const html = await page.content();
 
-      const dom = new JSDOM(html, { url });
-      const reader = new Readability(dom.window.document);
-      const article = reader.parse();
-      if (!article?.textContent?.trim()) throw new Error('Empty content via Puppeteer');
+      const html = await page.content();
+      if (!html || html.length < 200) throw new Error('Empty HTML');
 
       return res.status(200).json({ valid: true });
-    } catch (err) {
-      console.error('[Puppeteer Fallback Error]', err);
+    } catch {
       return res.status(400).json({ valid: false });
     }
-  } catch (error) {
-    console.error('[Validation Error]', error);
-    return res.status(400).json({ valid: false });
   } finally {
     if (browser) await browser.close();
   }
