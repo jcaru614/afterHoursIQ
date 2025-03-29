@@ -8,7 +8,7 @@ import {
   SCAN_INTERVAL_SLOW,
   MAX_SCANING_TIME,
 } from '@/utils/serverSide';
-import { predictNextQuarterUrl, getChatCompletion } from '@/lib';
+import { predictUpcomingQuarterUrl, getChatCompletion } from '@/lib';
 import { SYSTEM_PROMPT, USER_PROMPT, USER_PROMPT_ADVANCED } from '@/utils/prompts';
 import pdf from 'pdf-parse';
 import * as cheerio from 'cheerio';
@@ -96,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { quarter, year, previousReportUrl, reportsPageUrl, fearAndGreedIndex, vixIndex } =
       req.body;
-    const predictedUrl = predictNextQuarterUrl(previousReportUrl, quarter, year);
+    const predictedUrl = predictUpcomingQuarterUrl(previousReportUrl, quarter, year);
     console.log({ 'Predicted URL': predictedUrl });
 
     browser = await puppeteer.launch({

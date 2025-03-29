@@ -1,2 +1,2 @@
-export { predictNextQuarterUrl } from './predictNextQuarterUrl';
+export { predictUpcomingQuarterUrl } from './predictUpcomingQuarterUrl';
 export { getChatCompletion } from './getChatCompletion';

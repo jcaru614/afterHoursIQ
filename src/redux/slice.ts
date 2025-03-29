@@ -5,8 +5,7 @@ interface SliceState {
   positives: Array<string> | null;
   negatives: Array<string> | null;
   statusCode: number | null;
-  companyDomain: string | null;
-  reportUrl: string | null; // Add this line
+  reportUrl: string | null;
 }
 
 const initialState: SliceState = {
@@ -14,7 +13,6 @@ const initialState: SliceState = {
   positives: null,
   negatives: null,
   statusCode: null,
-  companyDomain: null,
   reportUrl: null,
 };
 
@@ -36,14 +34,12 @@ const slice = createSlice({
       state.negatives = action.payload.negatives;
       state.reportUrl = action.payload.reportUrl;
     },
-    setCompanyDomain(state, action: PayloadAction<string>) {
-      state.companyDomain = action.payload;
-    },
+
     setStatusCode(state, action: PayloadAction<number>) {
       state.statusCode = action.payload;
     },
   },
 });
 
-export const { setReportData, setCompanyDomain, setStatusCode } = slice.actions;
+export const { setReportData, setStatusCode } = slice.actions;
 export default slice.reducer;
