@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import { FiX } from 'react-icons/fi';
 
 interface AlertProps {
   rating?: number;
@@ -57,7 +57,7 @@ const Alert: React.FC<AlertProps> = ({ rating, statusCode }) => {
         className="ml-1 font-bold transition-all duration-300 transform hover:scale-125"
         onClick={() => setIsVisible(false)}
       >
-        <FaTimes />
+        <FiX />
       </button>
     </div>
   );

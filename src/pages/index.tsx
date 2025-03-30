@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react';
-import { RatingMeter, ReportSummary, Alert, Navbar, CompanyLogo } from '@/components';
+import {
+  RatingMeter,
+  ReportSummary,
+  Alert,
+  Navbar,
+  CompanyLogo,
+  ValidatedUrlInput,
+  DropdownSelect,
+} from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
-import { FaCheckCircle, FaSpinner, FaTimesCircle } from 'react-icons/fa';
-import { setCompanyDomain, setReportData, setStatusCode } from '@/redux/slice';
+import { FiLoader, FiExternalLink } from 'react-icons/fi';
+import { setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
-import { getFgiColor, getVixColor } from '@/utils/clientSide';
+import { getFgiColor, getVixColor, extractDomain } from '@/utils/clientSide';
 
 export default function Home() {
   const dispatch = useDispatch();
@@ -21,16 +29,21 @@ export default function Home() {
   const [quarter, setQuarter] = useState('');
   const [year, setYear] = useState('');
   const [isScanning, setIsScanning] = useState(false);
-  const [fearAndGreedIndex, setFearAndGreedIndex] = useState<any>(null);
-  const [vixIndex, setVixIndex] = useState<any>(null);
+
+  const [macroSentiment, setMacroSentiment] = useState<{ fgi: any; vix: any } | null>(null);
   const [includeMacro, setIncludeMacro] = useState(true);
+
+  const [analystEstimates, setAnalystEstimates] = useState<any>(null);
+
+  const [companyDomain, setCompanyDomain] = useState<string | null>(null);
+  const [ticker, setTicker] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
   const validYears = [currentYear - 1, currentYear, currentYear + 1].map((year) =>
     year.toString().slice(-2)
   );
 
-  const { rating, positives, negatives, reportUrl, statusCode, companyDomain } = useSelector(
+  const { rating, positives, negatives, reportUrl, statusCode } = useSelector(
     (state: RootState) => state.slice
   );
 
@@ -39,14 +52,8 @@ export default function Home() {
     setValid: (val: boolean | null) => void,
     setLoading: (val: boolean) => void
   ) => {
-    if (!url.trim()) {
-      setValid(null);
-      return;
-    }
-
-    try {
-      new URL(url);
-    } catch {
+    const trimmed = url.trim();
+    if (!trimmed || !/^https?:\/\//.test(trimmed)) {
       setValid(false);
       return;
     }
@@ -55,7 +62,7 @@ export default function Home() {
     setValid(null);
 
     try {
-      const res = await axios.get(`/api/validateReportUrl?url=${encodeURIComponent(url)}`);
+      const res = await axios.get(`/api/validateReportUrl?url=${encodeURIComponent(trimmed)}`);
       setValid(res.status === 200 && res.data.valid === true);
     } catch {
       setValid(false);
@@ -69,12 +76,14 @@ export default function Home() {
     setReportsPageUrl(newUrl);
 
     if (!newUrl) {
-      dispatch(setCompanyDomain(null));
+      setCompanyDomain(null);
+      setAnalystEstimates(null);
       setIsReportsPageUrlValid(null);
+      setTicker(null);
       return;
     }
 
-    fetchCompanyLogo(newUrl);
+    fetchCompanyInfo(newUrl);
     validateUrl(newUrl, setIsReportsPageUrlValid, setIsValidatingReportsPageUrl);
   };
 
@@ -84,15 +93,29 @@ export default function Home() {
     validateUrl(url, setIsPreviousUrlValid, setIsValidatingPreviousUrl);
   };
 
-  const fetchCompanyLogo = async (url: string) => {
+  const fetchCompanyInfo = async (url: string) => {
     if (!url.trim()) return;
+
+    const domain = extractDomain(url);
+    if (!domain) return;
+
+    setCompanyDomain(domain);
+    const companyName = domain.replace('.com', '');
+
     try {
-      const { data } = await axios.get(`/api/fetchCompanyLogo?url=${url}`);
-      if (data) {
-        dispatch(setCompanyDomain(data.domain));
+      const tickerRes = await axios.get(`/api/lookUpTicker?companyName=${companyName}`);
+      const foundTicker = tickerRes.data.ticker;
+
+      if (!foundTicker) {
+        console.warn('No ticker found for company name:', companyName);
+        return;
       }
+
+      setTicker(foundTicker);
+      const estimatesRes = await axios.get(`/api/fetchAnalystEstimates?ticker=${foundTicker}`);
+      setAnalystEstimates(estimatesRes.data.analystEstimates);
     } catch (error) {
-      console.error('Error fetching company overview:', error.response?.data || error.message);
+      console.error('Error fetching company info:', error.response?.data || error.message);
     }
   };
 
@@ -112,13 +135,14 @@ export default function Home() {
         previousReportUrl,
         quarter,
         year,
-        ...(includeMacro && fearAndGreedIndex && vixIndex
+        ...(includeMacro && macroSentiment?.fgi && macroSentiment?.vix
           ? {
-              fearAndGreedIndex: fearAndGreedIndex,
-              vixIndex: vixIndex,
+              fearAndGreedIndex: macroSentiment.fgi,
+              vixIndex: macroSentiment.vix,
             }
           : {}),
       };
+
       const { data } = await axios.post('/api/fetchReportInsights', requestBody);
       dispatch(setReportData(data));
     } catch (error) {
@@ -136,12 +160,15 @@ export default function Home() {
     const fetchMarketSentiment = async () => {
       try {
         const response = await axios.get('/api/fetchMarketSentiment');
-        setVixIndex(response.data.vix);
-        setFearAndGreedIndex(response.data.fearAndGreed);
+        setMacroSentiment({
+          fgi: response.data.fearAndGreed,
+          vix: response.data.vix,
+        });
       } catch (error) {
         console.error('Error fetching market data:', error);
       }
     };
+
     fetchMarketSentiment();
   }, []);
 
@@ -170,139 +197,119 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="relative flex items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] rounded-xl shadow-lg h-[160px] max-w-6xl overflow-hidden p-6">
-            <div className="flex flex-col items-center space-y-2 w-auto max-w-[200px]">
-              {companyDomain && (
-                <>
-                  <h2
-                    className={`text-2xl font-bold text-white uppercase text-center ${companyDomain.replace('.com', '').length > 10 ? 'truncate max-w-[120px]' : ''}`}
-                  >
-                    {companyDomain.replace('.com', '')}
-                  </h2>
-
-                  <div className="flex items-center justify-center">
-                    <CompanyLogo domain={companyDomain} />
-                  </div>
-                </>
-              )}
+          <div className="relative flex items-center justify-between bg-gradient-to-r from-[#0A0922] to-[#1D0F41] rounded-xl shadow-lg h-[160px] w-full overflow-hidden p-6">
+            <div className="flex flex-col items-center justify-center space-y-2 w-[200px]">
+              <h2 className="text-2xl font-bold text-white uppercase text-center">
+                {ticker || 'Ticker'}
+              </h2>
+              <CompanyLogo domain={companyDomain} />
             </div>
 
-            {fearAndGreedIndex && vixIndex && (
-              <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center space-y-3 text-white text-sm">
-                <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center justify-center space-y-3 text-white text-sm">
+              <div className="flex flex-col items-center justify-between h-[50px]">
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-lg">EPS</span>
+                  <div className="px-2.5 py-[6px] text-sm font-bold rounded-md shadow-md bg-[#31245C]">
+                    {analystEstimates?.upcomingQuarter?.eps ?? '—'}
+                  </div>
+                </div>
+                <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                  Est. EPS
+                </span>
+              </div>
+
+              <div className="flex flex-col items-center justify-between h-[50px]">
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-lg">Rev.</span>
+                  <div className="px-2.5 py-[6px] text-sm font-bold rounded-md shadow-md bg-[#31245C]">
+                    {analystEstimates?.upcomingQuarter?.revenue ?? '—'}
+                  </div>
+                </div>
+                <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                  Est. Revenue
+                </span>
+              </div>
+            </div>
+
+            {macroSentiment && (
+              <div className="flex flex-col items-center justify-center text-white text-sm space-y-3 w-[200px]">
+                <div className="flex flex-col items-center justify-between h-[50px]">
                   <div className="flex items-center space-x-2">
                     <span className="font-semibold text-lg">FGI</span>
                     <div
-                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getFgiColor(fearAndGreedIndex.value)}`}
+                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getFgiColor(
+                        macroSentiment.fgi.value
+                      )}`}
                     >
-                      {fearAndGreedIndex.value}
+                      {macroSentiment.fgi.value}
                     </div>
                   </div>
-                  <span className="mt-1 uppercase text-gray-300">
-                    {fearAndGreedIndex.sentiment}
+                  <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                    {macroSentiment.fgi.sentiment}
                   </span>
                 </div>
 
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center justify-between h-[50px]">
                   <div className="flex items-center space-x-2">
                     <span className="font-semibold text-lg">VIX</span>
                     <div
-                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getVixColor(vixIndex.value)}`}
+                      className={`px-2 py-1 text-sm font-bold rounded-md shadow-md ${getVixColor(
+                        macroSentiment.vix.value
+                      )}`}
                     >
-                      {vixIndex.value}
+                      {macroSentiment.vix.value}
                     </div>
                   </div>
-                  <span className="mt-1 uppercase text-gray-300">{vixIndex.sentiment}</span>
+                  <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                    {macroSentiment.vix.sentiment}
+                  </span>
                 </div>
               </div>
             )}
-
-            <div className="flex flex-col items-end justify-center w-40 ml-auto">
-              {reportUrl && (
-                <a
-                  href={reportUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-400 hover:text-blue-300 truncate max-w-[200px]"
-                >
-                  View Report
-                </a>
-              )}
-            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-6 w-full mt-6">
           <div className="flex flex-col w-full col-span-1">
-            <div className="relative w-full mb-4">
-              <input
-                type="url"
-                placeholder="Enter the investor relations page url"
-                className={`p-3 pr-10 rounded-lg border ${
-                  isReportsPageUrlValid === false ? 'border-red-500' : 'border-gray-300'
-                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
-                  isReportsPageUrlValid === false
-                    ? 'focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-purple-500 focus:border-purple-500'
-                } transition-all`}
-                value={reportsPageUrl}
-                onChange={handleReportsPageUrlChange}
-              />
-              {isValidatingReportsPageUrl ? (
-                <FaSpinner className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
-              ) : isReportsPageUrlValid === true ? (
-                <FaCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
-              ) : isReportsPageUrlValid === false ? (
-                <FaTimesCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
-              ) : null}
-            </div>
+            <ValidatedUrlInput
+              placeholder="Enter the investor relations page url"
+              value={reportsPageUrl}
+              onChange={handleReportsPageUrlChange}
+              isValid={isReportsPageUrlValid}
+              isLoading={isValidatingReportsPageUrl}
+            />
 
-            <div className="relative w-full mb-4">
-              <input
-                type="url"
-                placeholder="Enter the previous quarterly report url"
-                className={`p-3 pr-10 rounded-lg border ${
-                  isPreviousUrlValid === false ? 'border-red-500' : 'border-gray-300'
-                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
-                  isPreviousUrlValid === false
-                    ? 'focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-purple-500 focus:border-purple-500'
-                } transition-all`}
-                value={previousReportUrl}
-                onChange={handlePreviousReportUrlChange}
-              />
-              {isValidatingPreviousUrl ? (
-                <FaSpinner className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
-              ) : isPreviousUrlValid === true ? (
-                <FaCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
-              ) : isPreviousUrlValid === false ? (
-                <FaTimesCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
-              ) : null}
-            </div>
+            <ValidatedUrlInput
+              placeholder="Enter the previous quarterly report url"
+              value={previousReportUrl}
+              onChange={handlePreviousReportUrlChange}
+              isValid={isPreviousUrlValid}
+              isLoading={isValidatingPreviousUrl}
+            />
 
             <div className="flex w-full justify-between mb-4">
-              <select
-                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <DropdownSelect
                 value={quarter}
                 onChange={handleQuarterChange}
-              >
-                <option value="">Select Upcoming Quarter</option>
-                <option value="1">Q1</option>
-                <option value="2">Q2</option>
-                <option value="3">Q3</option>
-                <option value="4">Q4</option>
-              </select>
-              <select
-                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                placeholder="Select Upcoming Quarter"
+                options={[
+                  { value: '1', label: 'Q1' },
+                  { value: '2', label: 'Q2' },
+                  { value: '3', label: 'Q3' },
+                  { value: '4', label: 'Q4' },
+                ]}
+                className="w-[48%]"
+              />
+
+              <DropdownSelect
                 value={year}
                 onChange={handleYearChange}
-              >
-                <option value="">Select Appropriate Year</option>
-                {validYears.map((yearOption) => (
-                  <option key={yearOption} value={yearOption}>
-                    {`20${yearOption}`}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select Appropriate Year"
+                options={validYears.map((y) => ({
+                  value: y,
+                  label: `20${y}`,
+                }))}
+                className="w-[48%]"
+              />
             </div>
 
             <div className="flex w-full gap-4">
@@ -318,7 +325,7 @@ export default function Home() {
                 {isScanning ? (
                   <div className="flex items-center justify-center space-x-2">
                     <span>Scanning</span>
-                    <FaSpinner className="animate-spin text-white w-5 h-5" />
+                    <FiLoader className="animate-spin text-white w-5 h-5" />
                   </div>
                 ) : (
                   'Start Scanning'
@@ -339,7 +346,18 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
+          <div className="relative rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
+            {reportUrl && (
+              <a
+                href={reportUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute top-4 right-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 rounded-md shadow-md transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-purple-300"
+              >
+                View Report
+                <FiExternalLink className="w-4 h-4" />
+              </a>
+            )}
             <RatingMeter score={rating} />
           </div>
         </div>

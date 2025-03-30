@@ -7,7 +7,7 @@ function replacePattern(
   return patterns.reduce((newPart, { regex, replace }) => newPart.replace(regex, replace), part);
 }
 
-export function predictNextQuarterUrl(
+export function predictUpcomingQuarterUrl(
   currentUrl: string,
   targetQuarter: number,
   targetYear: string
