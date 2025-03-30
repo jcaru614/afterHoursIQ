@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
-import { RatingMeter, ReportSummary, Alert, Navbar, CompanyLogo } from '@/components';
+import {
+  RatingMeter,
+  ReportSummary,
+  Alert,
+  Navbar,
+  CompanyLogo,
+  ValidatedUrlInput,
+  DropdownSelect,
+} from '@/components';
 import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
-import { FiCheckCircle, FiXCircle, FiLoader, FiExternalLink } from 'react-icons/fi';
+import { FiLoader, FiExternalLink } from 'react-icons/fi';
 import { setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
 import { getFgiColor, getVixColor, extractDomain } from '@/utils/clientSide';
@@ -210,7 +218,9 @@ export default function Home() {
                     {analystEstimates?.upcomingQuarter?.eps ?? '—'}
                   </div>
                 </div>
-                <span className="text-center uppercase text-gray-300 text-xs">Est. EPS</span>
+                <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                  Est. EPS
+                </span>
               </div>
 
               <div className="flex flex-col items-center justify-between h-[50px]">
@@ -220,7 +230,9 @@ export default function Home() {
                     {analystEstimates?.upcomingQuarter?.revenue ?? '—'}
                   </div>
                 </div>
-                <span className="text-center uppercase text-gray-300 text-xs">Est. Revenue</span>
+                <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
+                  Est. Revenue
+                </span>
               </div>
             </div>
 
@@ -235,7 +247,7 @@ export default function Home() {
                       {fearAndGreedIndex.value}
                     </div>
                   </div>
-                  <span className="text-center uppercase text-gray-300 text-xs">
+                  <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
                     {fearAndGreedIndex.sentiment}
                   </span>
                 </div>
@@ -249,7 +261,7 @@ export default function Home() {
                       {vixIndex.value}
                     </div>
                   </div>
-                  <span className="text-center uppercase text-gray-300 text-xs">
+                  <span className="text-center uppercase text-gray-300 text-xs whitespace-nowrap">
                     {vixIndex.sentiment}
                   </span>
                 </div>
@@ -259,76 +271,46 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-2 gap-6 w-full mt-6">
           <div className="flex flex-col w-full col-span-1">
-            <div className="relative w-full mb-4">
-              <input
-                type="url"
-                placeholder="Enter the investor relations page url"
-                className={`p-3 pr-10 rounded-lg border ${
-                  isReportsPageUrlValid === false ? 'border-red-500' : 'border-gray-300'
-                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
-                  isReportsPageUrlValid === false
-                    ? 'focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-purple-500 focus:border-purple-500'
-                } transition-all`}
-                value={reportsPageUrl}
-                onChange={handleReportsPageUrlChange}
-              />
-              {isValidatingReportsPageUrl ? (
-                <FiLoader className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
-              ) : isReportsPageUrlValid === true ? (
-                <FiCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
-              ) : isReportsPageUrlValid === false ? (
-                <FiXCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
-              ) : null}
-            </div>
+            <ValidatedUrlInput
+              placeholder="Enter the investor relations page url"
+              value={reportsPageUrl}
+              onChange={handleReportsPageUrlChange}
+              isValid={isReportsPageUrlValid}
+              isLoading={isValidatingReportsPageUrl}
+            />
 
-            <div className="relative w-full mb-4">
-              <input
-                type="url"
-                placeholder="Enter the previous quarterly report url"
-                className={`p-3 pr-10 rounded-lg border ${
-                  isPreviousUrlValid === false ? 'border-red-500' : 'border-gray-300'
-                } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
-                  isPreviousUrlValid === false
-                    ? 'focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-purple-500 focus:border-purple-500'
-                } transition-all`}
-                value={previousReportUrl}
-                onChange={handlePreviousReportUrlChange}
-              />
-              {isValidatingPreviousUrl ? (
-                <FiLoader className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
-              ) : isPreviousUrlValid === true ? (
-                <FiCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
-              ) : isPreviousUrlValid === false ? (
-                <FiXCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
-              ) : null}
-            </div>
+            <ValidatedUrlInput
+              placeholder="Enter the previous quarterly report url"
+              value={previousReportUrl}
+              onChange={handlePreviousReportUrlChange}
+              isValid={isPreviousUrlValid}
+              isLoading={isValidatingPreviousUrl}
+            />
 
             <div className="flex w-full justify-between mb-4">
-              <select
-                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <DropdownSelect
                 value={quarter}
                 onChange={handleQuarterChange}
-              >
-                <option value="">Select Upcoming Quarter</option>
-                <option value="1">Q1</option>
-                <option value="2">Q2</option>
-                <option value="3">Q3</option>
-                <option value="4">Q4</option>
-              </select>
-              <select
-                className="p-3 rounded-lg border border-gray-300 bg-[#150C34] text-white w-[48%] text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                placeholder="Select Upcoming Quarter"
+                options={[
+                  { value: '1', label: 'Q1' },
+                  { value: '2', label: 'Q2' },
+                  { value: '3', label: 'Q3' },
+                  { value: '4', label: 'Q4' },
+                ]}
+                className="w-[48%]"
+              />
+
+              <DropdownSelect
                 value={year}
                 onChange={handleYearChange}
-              >
-                <option value="">Select Appropriate Year</option>
-                {validYears.map((yearOption) => (
-                  <option key={yearOption} value={yearOption}>
-                    {`20${yearOption}`}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select Appropriate Year"
+                options={validYears.map((y) => ({
+                  value: y,
+                  label: `20${y}`,
+                }))}
+                className="w-[48%]"
+              />
             </div>
 
             <div className="flex w-full gap-4">
