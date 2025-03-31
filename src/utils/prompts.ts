@@ -19,16 +19,17 @@ Guidelines:
 10. In fearful or volatile market conditions, apply more scrutiny — even strong results may be insufficient to drive upside if uncertainty is high.
 `;
 
-export const USER_PROMPT_ADVANCED = (
+export const USER_PROMPT = (
   reportText: string,
-  macro: { fgiValue: number; fgiSentiment: string; vixValue: number; vixSentiment: string }
+  macro: { fgiValue: number; fgiSentiment: string; vixValue: number; vixSentiment: string },
+  estimates: { eps: string | null; revenue: string | null }
 ): string => `
 **Earnings Report Analysis Task**
 Analyze this quarterly earnings report for immediate after-hours trading (short/long bias).
 
 1. Focus on 3–5 critical drivers:
-   - Revenue vs expectations (actual vs estimate, if available)
-   - EPS performance (direction and magnitude)
+   - Revenue vs expectations (actual vs estimate: ${estimates.revenue})
+   - EPS performance (actual vs estimate: ${estimates.eps})
    - Guidance changes (raised/lowered/missing)
    - Margin trends (gross and operating)
    - Market-moving surprises, risks, or standout segments
@@ -43,20 +44,4 @@ Analyze this quarterly earnings report for immediate after-hours trading (short/
    - Adjust your bias accordingly — avoid overly bullish calls in fearful conditions, and avoid overly bearish calls in greedy conditions.
 
 **Report Content**
-${reportText.substring(0, 12000)}`;
-
-export const USER_PROMPT = (reportText: string): string => `
-**Earnings Report Analysis Task**
-Analyze the following quarterly earnings report for its immediate after-hours trading impact.
-
-  Focus on 3–5 critical drivers:
-   - Revenue vs expectations (actual vs estimate)
-   - EPS performance (beat/miss magnitude)
-   - Guidance changes (raised/lowered)
-   - Margin trends (gross/operating)
-   - Market-moving surprises or triggers
-
-Return your findings in the required JSON format.
-
-Report:
 ${reportText.substring(0, 12000)}`;
