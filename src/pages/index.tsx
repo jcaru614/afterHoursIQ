@@ -42,6 +42,8 @@ export default function Home() {
     year.toString().slice(-2)
   );
 
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+
   const { rating, positives, negatives, reportUrl, statusCode } = useSelector(
     (state: RootState) => state.slice
   );
@@ -128,6 +130,9 @@ export default function Home() {
 
   const handleStartScanning = async () => {
     setIsScanning(true);
+    const controller = new AbortController();
+    setAbortController(controller);
+
     try {
       const requestBody = {
         reportsPageUrl,
@@ -144,16 +149,28 @@ export default function Home() {
         }),
       };
 
-      const { data } = await axios.post('/api/fetchReportInsights', requestBody);
+      const { data } = await axios.post('/api/fetchReportInsights', requestBody, {
+        signal: controller.signal,
+      });
+
       dispatch(setReportData(data));
-    } catch (error) {
-      if (error.response?.status === 408) {
+    } catch (error: any) {
+      if (axios.isCancel(error) || error.name === 'CanceledError') {
+        console.warn('Scan cancelled by user.');
+      } else if (error.response?.status === 408) {
         dispatch(setStatusCode(error.response.status));
       } else {
         console.error('Error fetching the report:', error);
       }
     } finally {
+      setAbortController(null);
       setIsScanning(false);
+    }
+  };
+
+  const handleCancelScan = () => {
+    if (abortController) {
+      abortController.abort();
     }
   };
 
@@ -334,6 +351,17 @@ export default function Home() {
                 ) : (
                   'Start Scanning'
                 )}
+              </button>
+              <button
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 transition-all duration-200 ${
+                  isScanning
+                    ? 'bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 focus:ring-4 focus:ring-red-300'
+                    : 'bg-gray-400 cursor-not-allowed'
+                }`}
+                onClick={handleCancelScan}
+                disabled={!isScanning}
+              >
+                Cancel Scan
               </button>
             </div>
           </div>
