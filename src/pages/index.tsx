@@ -31,7 +31,6 @@ export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
 
   const [macroSentiment, setMacroSentiment] = useState<{ fgi: any; vix: any } | null>(null);
-  const [includeMacro, setIncludeMacro] = useState(true);
 
   const [analystEstimates, setAnalystEstimates] = useState<any>(null);
 
@@ -64,8 +63,9 @@ export default function Home() {
     try {
       const res = await axios.get(`/api/validateReportUrl?url=${encodeURIComponent(trimmed)}`);
       setValid(res.status === 200 && res.data.valid === true);
-    } catch {
+    } catch (error: any) {
       setValid(false);
+      dispatch(setStatusCode(error?.response?.status || 500));
     } finally {
       setLoading(false);
     }
@@ -110,11 +110,11 @@ export default function Home() {
         console.warn('No ticker found for company name:', companyName);
         return;
       }
-
       setTicker(foundTicker);
       const estimatesRes = await axios.get(`/api/fetchAnalystEstimates?ticker=${foundTicker}`);
       setAnalystEstimates(estimatesRes.data.analystEstimates);
     } catch (error) {
+      dispatch(setStatusCode(error?.response?.status || 500));
       console.error('Error fetching company info:', error.response?.data || error.message);
     }
   };
@@ -129,31 +129,34 @@ export default function Home() {
 
   const handleStartScanning = async () => {
     setIsScanning(true);
-    try {
-      const requestBody = {
-        reportsPageUrl,
-        previousReportUrl,
-        quarter,
-        year,
-        ...(includeMacro && macroSentiment?.fgi && macroSentiment?.vix
-          ? {
-              fearAndGreedIndex: macroSentiment.fgi,
-              vixIndex: macroSentiment.vix,
-            }
-          : {}),
-      };
 
-      const { data } = await axios.post('/api/fetchReportInsights', requestBody);
-      dispatch(setReportData(data));
-    } catch (error) {
-      if (error.response?.status === 408) {
-        dispatch(setStatusCode(error.response.status));
-      } else {
+    const requestBody = {
+      reportsPageUrl,
+      previousReportUrl,
+      quarter,
+      year,
+      ...(macroSentiment?.fgi &&
+        macroSentiment?.vix && {
+          fearAndGreedIndex: macroSentiment.fgi,
+          vixIndex: macroSentiment.vix,
+        }),
+      ...(analystEstimates?.upcomingQuarter && {
+        analystEstimates: analystEstimates.upcomingQuarter,
+      }),
+    };
+
+    await axios
+      .post('/api/fetchReportInsights', requestBody)
+      .then(({ data }) => {
+        dispatch(setReportData(data));
+      })
+      .catch((error: any) => {
+        dispatch(setStatusCode(error?.response?.status || 500));
         console.error('Error fetching the report:', error);
-      }
-    } finally {
-      setIsScanning(false);
-    }
+      })
+      .finally(() => {
+        setIsScanning(false);
+      });
   };
 
   useEffect(() => {
@@ -165,6 +168,7 @@ export default function Home() {
           vix: response.data.vix,
         });
       } catch (error) {
+        dispatch(setStatusCode(error?.response?.status || 500));
         console.error('Error fetching market data:', error);
       }
     };
@@ -181,7 +185,10 @@ export default function Home() {
       reportsPageUrl &&
       previousReportUrl &&
       quarter &&
-      year
+      year &&
+      analystEstimates?.upcomingQuarter &&
+      macroSentiment?.fgi &&
+      macroSentiment?.vix
     ) || isScanning;
 
   return (
@@ -286,7 +293,7 @@ export default function Home() {
               isLoading={isValidatingPreviousUrl}
             />
 
-            <div className="flex w-full justify-between mb-4">
+            <div className="flex w-full justify-between mb-4 gap-x-4">
               <DropdownSelect
                 value={quarter}
                 onChange={handleQuarterChange}
@@ -312,9 +319,9 @@ export default function Home() {
               />
             </div>
 
-            <div className="flex w-full gap-4">
+            <div className="flex w-full items-start gap-6">
               <button
-                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 ${
+                className={`px-6 py-3 rounded-md text-white font-semibold flex-1 transition-all duration-200 ${
                   isStartScanningDisabled
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 focus:ring-4 focus:ring-purple-300'
@@ -331,21 +338,8 @@ export default function Home() {
                   'Start Scanning'
                 )}
               </button>
-              <div className="flex items-center mb-4">
-                <input
-                  type="checkbox"
-                  id="includeMacro"
-                  checked={includeMacro}
-                  onChange={(e) => setIncludeMacro(e.target.checked)}
-                  className="mr-2 w-5 h-5 accent-purple-600 bg-gray-100 border-gray-300 focus:ring-purple-500"
-                />
-                <label htmlFor="includeMacro" className="text-gray-300 text-sm">
-                  Include Market Sentiment (FGI & VIX)
-                </label>
-              </div>
             </div>
           </div>
-
           <div className="relative rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
             {reportUrl && (
               <a

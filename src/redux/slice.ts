@@ -34,12 +34,14 @@ const slice = createSlice({
       state.negatives = action.payload.negatives;
       state.reportUrl = action.payload.reportUrl;
     },
-
     setStatusCode(state, action: PayloadAction<number>) {
       state.statusCode = action.payload;
+    },
+    clearStatusCode(state) {
+      state.statusCode = null;
     },
   },
 });
 
-export const { setReportData, setStatusCode } = slice.actions;
+export const { setReportData, setStatusCode, clearStatusCode } = slice.actions;
 export default slice.reducer;

@@ -1,15 +1,16 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import {
-  hasCorrectQuarter,
-  hasCorrectYear,
   FAST_SCAN_DURATION,
   SCAN_INTERVAL_FAST,
   SCAN_INTERVAL_SLOW,
   MAX_SCANING_TIME,
+  hasCorrectQuarter,
+  hasCorrectYear,
+  hasQuarterYearCombo,
 } from '@/utils/serverSide';
-import { predictUpcomingQuarterUrl, getChatCompletion } from '@/lib';
-import { SYSTEM_PROMPT, USER_PROMPT, USER_PROMPT_ADVANCED } from '@/utils/prompts';
+import { predictUpcomingQuarterUrl, getChatCompletion, extractContentWithDiffbot } from '@/lib';
+import { SYSTEM_PROMPT, USER_PROMPT } from '@/utils/prompts';
 import pdf from 'pdf-parse';
 import * as cheerio from 'cheerio';
 import * as fuzz from 'fuzzball';
@@ -30,7 +31,7 @@ const scanForMatchingReportUrl = async (
     console.log(`[scanAttempt: Puppeteer Page Scan]`);
 
     try {
-      await page.goto(reportsPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.goto(reportsPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
       const html = await page.content();
       const $ = cheerio.load(html);
@@ -43,11 +44,12 @@ const scanForMatchingReportUrl = async (
           hrefs.add(fullHref);
         }
       });
+      const prevPathLength = new URL(predictedUrl).pathname.length;
 
       const links = Array.from(hrefs).filter((link) => {
         try {
           const { pathname } = new URL(link);
-          return pathname.length > 10 && pathname !== '/' && pathname !== '';
+          return pathname !== '/' && pathname !== '' && pathname.length >= prevPathLength - 20;
         } catch {
           return false;
         }
@@ -63,12 +65,13 @@ const scanForMatchingReportUrl = async (
 
       for (const match of matches) {
         if (
-          match.score > 90 &&
-          hasCorrectQuarter(match.choice, quarter) &&
-          hasCorrectYear(match.choice, year)
+          (match.score > 90 &&
+            hasCorrectQuarter(match.choice, quarter) &&
+            hasCorrectYear(match.choice, year)) ||
+          hasQuarterYearCombo(match.choice, quarter, year)
         ) {
           const totalTime = (Date.now() - startTime) / 1000;
-          console.log(`[Match Found] in ${totalTime}s`);
+          console.log(`[Match Found] in ${totalTime}s - match url: ${match.choice}`);
           return match.choice;
         }
       }
@@ -94,14 +97,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { quarter, year, previousReportUrl, reportsPageUrl, fearAndGreedIndex, vixIndex } =
-      req.body;
+    const {
+      quarter,
+      year,
+      previousReportUrl,
+      reportsPageUrl,
+      fearAndGreedIndex,
+      vixIndex,
+      analystEstimates,
+    } = req.body;
+
     const predictedUrl = predictUpcomingQuarterUrl(previousReportUrl, quarter, year);
     console.log({ 'Predicted URL': predictedUrl });
 
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-http2'],
     });
 
     page = await browser.newPage();
@@ -122,11 +133,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(408).json({ error: 'Maximum scanning time reached. Report not found.' });
     }
 
-    console.log('[ContentRequest] Fetching content...');
     let reportContent = '';
     const isAspx = new URL(reportUrl).pathname.toLowerCase().includes('.aspx');
     const isPDF = new URL(reportUrl).pathname.toLowerCase().includes('.pdf');
-
+    console.log('[ContentRequest] Fetching content...');
     if (isPDF) {
       try {
         const pdfResponse = await axios.get(reportUrl, {
@@ -155,11 +165,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } else {
       try {
-        const diffbotResponse = await axios.get('https://api.diffbot.com/v3/article', {
-          params: { token: process.env.DIFFBOT_API_KEY, url: reportUrl },
-          timeout: 15000,
-        });
-        reportContent = diffbotResponse.data.objects[0]?.text || '';
+        const reportText = await extractContentWithDiffbot(reportUrl);
+        reportContent = reportText;
       } catch (error) {
         console.error('[Diffbot Parsing Error]', error);
         return res.status(500).json({ error: 'Failed to extract HTML report via Diffbot' });
@@ -171,20 +178,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Failed to extract report text' });
     }
 
-    const userPrompt =
-      fearAndGreedIndex && vixIndex
-        ? USER_PROMPT_ADVANCED(reportContent, {
-            fgiValue: parseFloat(fearAndGreedIndex.value),
-            fgiSentiment: fearAndGreedIndex.sentiment,
-            vixValue: parseFloat(vixIndex.value),
-            vixSentiment: vixIndex.sentiment,
-          })
-        : USER_PROMPT(reportContent);
-
-    const aiResponseContent = await getChatCompletion(SYSTEM_PROMPT, userPrompt);
+    const aiResponseContent = await getChatCompletion(
+      SYSTEM_PROMPT,
+      USER_PROMPT(
+        reportContent,
+        {
+          fgiValue: parseFloat(fearAndGreedIndex.value),
+          fgiSentiment: fearAndGreedIndex.sentiment,
+          vixValue: parseFloat(vixIndex.value),
+          vixSentiment: vixIndex.sentiment,
+        },
+        {
+          eps: analystEstimates.eps,
+          revenue: analystEstimates.revenue,
+        }
+      )
+    );
 
     const parsedResponse = JSON.parse(aiResponseContent);
-
+    console.log('getChatCompletion parse Response ', parsedResponse);
     return res.status(200).json({
       rating: parsedResponse.rating,
       positives: parsedResponse.positives,
