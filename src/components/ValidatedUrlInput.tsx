@@ -16,6 +16,8 @@ const ValidatedUrlInput: React.FC<ValidatedUrlInputProps> = ({
   isValid,
   isLoading,
 }) => {
+  const showInvalid = isValid === false && value;
+
   return (
     <div className="relative w-full mb-4">
       <input
@@ -24,9 +26,9 @@ const ValidatedUrlInput: React.FC<ValidatedUrlInputProps> = ({
         value={value}
         onChange={onChange}
         className={`p-3 pr-10 rounded-lg border ${
-          isValid === false ? 'border-red-500' : 'border-gray-300'
+          showInvalid ? 'border-red-500' : 'border-gray-300'
         } bg-[#150C34] w-full text-lg focus:outline-none focus:ring-2 ${
-          isValid === false
+          showInvalid
             ? 'focus:ring-red-500 focus:border-red-500'
             : 'focus:ring-purple-500 focus:border-purple-500'
         } transition-all`}
@@ -35,7 +37,7 @@ const ValidatedUrlInput: React.FC<ValidatedUrlInputProps> = ({
         <FiLoader className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
       ) : isValid === true ? (
         <FiCheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" />
-      ) : isValid === false ? (
+      ) : showInvalid ? (
         <FiXCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 w-5 h-5" />
       ) : null}
     </div>

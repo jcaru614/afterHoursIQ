@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   RatingMeter,
   ReportSummary,
@@ -9,6 +9,7 @@ import {
   DropdownSelect,
 } from '@/components';
 import axios from 'axios';
+import debounce from 'lodash/debounce';
 import { useDispatch, useSelector } from 'react-redux';
 import { FiLoader, FiExternalLink } from 'react-icons/fi';
 import { setReportData, setStatusCode } from '@/redux/slice';
@@ -31,11 +32,13 @@ export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
 
   const [macroSentiment, setMacroSentiment] = useState<{ fgi: any; vix: any } | null>(null);
-
   const [analystEstimates, setAnalystEstimates] = useState<any>(null);
 
   const [companyDomain, setCompanyDomain] = useState<string | null>(null);
   const [ticker, setTicker] = useState<string | null>(null);
+
+  const [tickerInput, setTickerInput] = useState('');
+  const [isFetchingEstimates, setIsFetchingEstimates] = useState(false);
 
   const currentYear = new Date().getFullYear();
   const validYears = [currentYear - 1, currentYear, currentYear + 1].map((year) =>
@@ -76,14 +79,18 @@ export default function Home() {
     setReportsPageUrl(newUrl);
 
     if (!newUrl) {
-      setCompanyDomain(null);
-      setAnalystEstimates(null);
       setIsReportsPageUrlValid(null);
-      setTicker(null);
+      setCompanyDomain(null);
       return;
     }
 
-    fetchCompanyInfo(newUrl);
+    try {
+      const domain = extractDomain(newUrl);
+      setCompanyDomain(domain);
+    } catch {
+      setCompanyDomain(null);
+    }
+
     validateUrl(newUrl, setIsReportsPageUrlValid, setIsValidatingReportsPageUrl);
   };
 
@@ -93,30 +100,46 @@ export default function Home() {
     validateUrl(url, setIsPreviousUrlValid, setIsValidatingPreviousUrl);
   };
 
-  const fetchCompanyInfo = async (url: string) => {
-    if (!url.trim()) return;
+  const debouncedFetchEstimates = useMemo(
+    () =>
+      debounce(async (input: string) => {
+        setIsFetchingEstimates(true);
 
-    const domain = extractDomain(url);
-    if (!domain) return;
+        if (!input) {
+          setTicker(null);
+          setAnalystEstimates(null);
+          setIsFetchingEstimates(false);
+          return;
+        }
 
-    setCompanyDomain(domain);
-    const companyName = domain.replace('.com', '');
+        try {
+          const res = await axios.get(`/api/fetchAnalystEstimates?ticker=${input}`);
+          if (res.data?.analystEstimates?.upcomingQuarter) {
+            setAnalystEstimates(res.data.analystEstimates);
+            setTicker(input);
+          } else {
+            setAnalystEstimates(null);
+            setTicker(null);
+          }
+        } catch (error: any) {
+          setAnalystEstimates(null);
+          setTicker(null);
+          dispatch(setStatusCode(error?.response?.status || 500));
+          console.error(
+            'Error fetching analyst estimates:',
+            error?.response?.data || error.message
+          );
+        } finally {
+          setIsFetchingEstimates(false);
+        }
+      }, 800),
+    []
+  );
 
-    try {
-      const tickerRes = await axios.get(`/api/lookUpTicker?companyName=${companyName}`);
-      const foundTicker = tickerRes.data.ticker;
-
-      if (!foundTicker) {
-        console.warn('No ticker found for company name:', companyName);
-        return;
-      }
-      setTicker(foundTicker);
-      const estimatesRes = await axios.get(`/api/fetchAnalystEstimates?ticker=${foundTicker}`);
-      setAnalystEstimates(estimatesRes.data.analystEstimates);
-    } catch (error) {
-      dispatch(setStatusCode(error?.response?.status || 500));
-      console.error('Error fetching company info:', error.response?.data || error.message);
-    }
+  const handleTickerChange = (input: string) => {
+    const cleaned = input.trim().toUpperCase();
+    setTickerInput(cleaned);
+    debouncedFetchEstimates(cleaned);
   };
 
   const handleQuarterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -138,7 +161,6 @@ export default function Home() {
       ...(macroSentiment?.fgi &&
         macroSentiment?.vix && {
           fearAndGreedIndex: macroSentiment.fgi,
-          vixIndex: macroSentiment.vix,
         }),
       ...(analystEstimates?.upcomingQuarter && {
         analystEstimates: analystEstimates.upcomingQuarter,
@@ -176,12 +198,18 @@ export default function Home() {
     fetchMarketSentiment();
   }, []);
 
+  const isTickerValid =
+    analystEstimates?.upcomingQuarter &&
+    analystEstimates.upcomingQuarter.eps !== 'N/A' &&
+    analystEstimates.upcomingQuarter.revenue !== 'N/A';
+
   const isStartScanningDisabled =
     !(
       isReportsPageUrlValid === true &&
       isPreviousUrlValid === true &&
       !isValidatingReportsPageUrl &&
       !isValidatingPreviousUrl &&
+      isTickerValid &&
       reportsPageUrl &&
       previousReportUrl &&
       quarter &&
@@ -207,7 +235,7 @@ export default function Home() {
           <div className="relative flex items-center justify-between bg-gradient-to-r from-[#0A0922] to-[#1D0F41] rounded-xl shadow-lg h-[160px] w-full overflow-hidden p-6">
             <div className="flex flex-col items-center justify-center space-y-2 w-[200px]">
               <h2 className="text-2xl font-bold text-white uppercase text-center">
-                {ticker || 'Ticker'}
+                {analystEstimates?.upcomingQuarter ? ticker : 'Ticker'}
               </h2>
               <CompanyLogo domain={companyDomain} />
             </div>
@@ -275,8 +303,17 @@ export default function Home() {
             )}
           </div>
         </div>
+
         <div className="grid grid-cols-2 gap-6 w-full mt-6">
           <div className="flex flex-col w-full col-span-1">
+            <ValidatedUrlInput
+              placeholder="Enter Ticker Symbol (e.g. AAPL)"
+              value={tickerInput}
+              onChange={(e) => handleTickerChange(e.target.value)}
+              isValid={ticker ? isTickerValid : null}
+              isLoading={isFetchingEstimates}
+            />
+
             <ValidatedUrlInput
               placeholder="Enter the investor relations page url"
               value={reportsPageUrl}
@@ -340,6 +377,7 @@ export default function Home() {
               </button>
             </div>
           </div>
+
           <div className="relative rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
             {reportUrl && (
               <a

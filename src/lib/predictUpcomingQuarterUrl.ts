@@ -12,46 +12,53 @@ export function predictUpcomingQuarterUrl(
   targetQuarter: number,
   targetYear: string
 ): string {
-  const url = new URL(currentUrl);
+  const url = new URL(currentUrl.toLowerCase());
   const [domain, ...pathParts] = url.pathname.split('/').filter(Boolean);
 
+  const comboPatterns = [
+    {
+      regex: /(fy)?(\d{2,4})[-_]?q([1-4])/gi,
+      replace: () => `${targetYear}q${targetQuarter}`,
+    },
+    {
+      regex: /q([1-4])[-_]?(fy)?(\d{2,4})/gi,
+      replace: () => `q${targetQuarter}fy${targetYear}`,
+    },
+    {
+      regex: /(\d{4})q([1-4])/gi,
+      replace: () => `${targetYear}q${targetQuarter}`,
+    },
+    {
+      regex: /q([1-4])[-_](\d{2,4})/gi,
+      replace: () => `q${targetQuarter}-${targetYear}`,
+    },
+  ];
+
   const quarterPatterns = [
+    { regex: /q([1-4])/g, replace: () => `q${targetQuarter}` },
+    { regex: /([1-4])q/g, replace: () => `${targetQuarter}q` },
+    { regex: /quarter[- ]?([1-4])/g, replace: () => `quarter-${targetQuarter}` },
     {
-      regex: /q([1-4])/gi,
-      replace: (match: string, quarter: string) =>
-        match[0] === 'Q' ? `Q${targetQuarter}` : `q${targetQuarter}`,
-    },
-    {
-      regex: /quarter[- ]?([1-4])/gi,
-      replace: () => `quarter-${targetQuarter}`,
-    },
-    {
-      regex: /(first|second|third|fourth)[- ]?quarter/gi,
+      regex: /(first|second|third|fourth)[- ]?quarter/g,
       replace: () => ['first', 'second', 'third', 'fourth'][targetQuarter - 1] + '-quarter',
     },
     {
-      regex: /([1-4])(st|nd|rd|th)[- ]?quarter/gi,
+      regex: /([1-4])(st|nd|rd|th)[- ]?quarter/g,
       replace: () => `${targetQuarter}${getOrdinalSuffix(targetQuarter)}-quarter`,
     },
   ];
 
   const yearPatterns = [
     {
-      regex: /\b(FY)?(\d{2}|\d{4})\b/gi,
-      replace: (match: string, fyPrefix: string, yearPart: string) => {
-        const newYear = yearPart.length === 2 ? targetYear : `20${targetYear}`;
-        return fyPrefix ? `FY${newYear}` : newYear;
-      },
-    },
-    {
-      regex: /\/(\d{2}|\d{4})\//g,
-      replace: (match: string, yearPart: string) =>
-        yearPart.length === 2 ? `/${targetYear}/` : `/20${targetYear}/`,
+      regex: /\b(\d{2}|\d{4})\b/g,
+      replace: (_: string, yearPart: string) =>
+        yearPart.length === 4 && targetYear.length === 2 ? `20${targetYear}` : targetYear,
     },
   ];
 
   const newPathParts = pathParts.map((part) => {
-    let updatedPart = replacePattern(part, quarterPatterns);
+    let updatedPart = replacePattern(part, comboPatterns);
+    updatedPart = replacePattern(updatedPart, quarterPatterns);
     updatedPart = replacePattern(updatedPart, yearPatterns);
     return updatedPart;
   });

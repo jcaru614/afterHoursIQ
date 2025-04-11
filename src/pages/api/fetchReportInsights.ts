@@ -103,7 +103,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       previousReportUrl,
       reportsPageUrl,
       fearAndGreedIndex,
-      vixIndex,
       analystEstimates,
     } = req.body;
 
@@ -185,8 +184,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         {
           fgiValue: parseFloat(fearAndGreedIndex.value),
           fgiSentiment: fearAndGreedIndex.sentiment,
-          vixValue: parseFloat(vixIndex.value),
-          vixSentiment: vixIndex.sentiment,
         },
         {
           eps: analystEstimates.eps,

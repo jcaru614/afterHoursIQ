@@ -32,9 +32,11 @@ export const getVixSentiment = (vixValue) => {
 
 export const hasCorrectQuarter = (url: string, quarter: string): boolean => {
   const qNum = Number(quarter);
-  const lower = url.toLowerCase();
+  const pathParts = new URL(url).pathname.split('/').filter(Boolean);
+
   const textForms = [
     `q${qNum}`,
+    `${qNum}q`,
     `quarter-${qNum}`,
     `quarter ${qNum}`,
     `quarter${qNum}`,
@@ -44,30 +46,23 @@ export const hasCorrectQuarter = (url: string, quarter: string): boolean => {
     ['first', 'second', 'third', 'fourth'][qNum - 1],
     `${qNum}${getOrdinalSuffix(qNum)}`,
   ];
-  return textForms.some((form) => lower.includes(form));
+
+  return pathParts.some((part) => textForms.some((form) => part.toLowerCase().includes(form)));
 };
 
 export const hasCorrectYear = (url: string, year: string): boolean => {
   const fullYear = `20${year}`;
-  const lower = url.toLowerCase();
-  const textForms = [
-    `fy${year}`,
-    `fy${fullYear}`,
-    `-${year}`,
-    `-${fullYear}`,
-    `_${year}`,
-    `_${fullYear}`,
-    year,
-    fullYear,
-  ];
+  const pathParts = new URL(url).pathname.split('/').filter(Boolean);
 
-  return textForms.some((form) => lower.includes(form));
+  const textForms = [year, fullYear];
+  return pathParts.some((part) => textForms.some((form) => part.toLowerCase().includes(form)));
 };
 
 export const hasQuarterYearCombo = (url: string, quarter: string, year: string): boolean => {
   const fullYear = `20${year}`;
-  const lower = url.toLowerCase();
   const qNum = Number(quarter);
+  const pathParts = new URL(url).pathname.split('/').filter(Boolean);
+
   const combos = [
     `q${qNum}fy${year}`,
     `q${qNum}fy${fullYear}`,
@@ -77,7 +72,10 @@ export const hasQuarterYearCombo = (url: string, quarter: string, year: string):
     `fy${fullYear}q${qNum}`,
     `fy${year}-q${qNum}`,
     `fy${fullYear}-q${qNum}`,
+    `${fullYear}q${qNum}`,
+    `q${qNum}-${fullYear}`,
+    `${fullYear}-q${qNum}`,
   ];
 
-  return combos.some((combo) => lower.includes(combo));
+  return pathParts.some((part) => combos.some((combo) => part.toLowerCase().includes(combo)));
 };

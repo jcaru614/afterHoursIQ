@@ -16,15 +16,15 @@ Instructions:
 3. Flag all estimate misses explicitly in the negatives list.
 4. Penalize vague or missing guidance unless clearly explained.
 5. Do not let tone, language, or buybacks override weak numbers.
-6. In fearful or volatile macro conditions, apply more scrutiny — even decent results may lead to downside.
-7. In greedy, calm macro conditions, average or slightly positive results may still drive upside.
+6. In fearful macro conditions, apply more scrutiny — even decent results may lead to downside.
+7. In greedy macro conditions, average or slightly positive results may still drive upside.
 
 Always return only the requested JSON. Do not add explanations or commentary.
 `;
 
 export const USER_PROMPT = (
   reportText: string,
-  macro: { fgiValue: number; fgiSentiment: string; vixValue: number; vixSentiment: string },
+  macro: { fgiValue: number; fgiSentiment: string },
   estimates: { eps: string | null; revenue: string | null }
 ): string => `
 Analyze this quarterly earnings report using the system prompt rules and output your response as JSON only.
@@ -38,7 +38,6 @@ Focus on these core signals:
 
 Current macro conditions:
 - Fear & Greed Index: ${macro.fgiValue} → ${macro.fgiSentiment}
-- VIX: ${macro.vixValue} → ${macro.vixSentiment}
 
 Interpretation logic:
 
@@ -47,7 +46,7 @@ Interpretation logic:
   - Revenue and EPS both miss estimates,
   - Forward guidance is flat, lowered, or vague,
   - Margins or business segments show deterioration or execution risk.
-- In fearful or volatile macro conditions (FGI < 30 or VIX > 20), even average or mixed results may trigger selling.
+- In fearful macro conditions (FGI < 30), even average or mixed results may trigger selling.
 - Do not let tone, language, or buybacks raise the rating when fundamentals are weak.
 
 🟡 Hold Rating (3):
@@ -62,7 +61,7 @@ Interpretation logic:
   - Revenue and EPS both beat estimates,
   - Guidance is raised or confident,
   - Margins are expanding and key segments are accelerating.
-- In greedy, calm macro conditions (FGI > 60 and VIX < 15), even modest beats or positive tone may drive upside.
+- In greedy macro conditions (FGI > 60), even modest beats or positive tone may drive upside.
 - Strong capital return (buybacks, dividends) may support a long if fundamentals are solid.
 
 Use only specific financial figures from the report — no vague or generic summaries.
