@@ -17,6 +17,7 @@ import * as fuzz from 'fuzzball';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
+import { link } from 'fs';
 
 const scanForMatchingReportUrl = async (
   predictedUrl: string,
@@ -31,7 +32,7 @@ const scanForMatchingReportUrl = async (
     console.log(`[scanAttempt: Puppeteer Page Scan]`);
 
     try {
-      await page.goto(reportsPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(reportsPageUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
       const html = await page.content();
       const $ = cheerio.load(html);
@@ -54,24 +55,30 @@ const scanForMatchingReportUrl = async (
           return false;
         }
       });
-
+      console.log('[Links] in order of appearance:', links);
+      // This may not be nessesary since the best links are at the top of the dom tree
       const matches = fuzz.extract(predictedUrl, links, {
-        scorer: fuzz.token_set_ratio,
+        scorer: fuzz.partial_token_sort_ratio,
         returnObjects: true,
-        limit: 15,
+        limit: 30,
       });
 
       console.log('[FuzzyMatch] Best matches:', matches);
 
       for (const match of matches) {
         if (
-          (match.score > 90 &&
-            hasCorrectQuarter(match.choice, quarter) &&
-            hasCorrectYear(match.choice, year)) ||
+          (hasCorrectQuarter(match.choice, quarter) && hasCorrectYear(match.choice, year)) ||
           hasQuarterYearCombo(match.choice, quarter, year)
         ) {
-          const totalTime = (Date.now() - startTime) / 1000;
-          console.log(`[Match Found] in ${totalTime}s - match url: ${match.choice}`);
+          const matchTime = new Date().toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+
+          console.log(`[Match Found] at ${matchTime}`);
+          console.log(`[Match Url] found: ${match.choice}`);
           return match.choice;
         }
       }
@@ -191,14 +198,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       )
     );
+    let ratingGeneratedAt = new Date();
 
     const parsedResponse = JSON.parse(aiResponseContent);
     console.log('getChatCompletion parse Response ', parsedResponse);
+
     return res.status(200).json({
       rating: parsedResponse.rating,
       positives: parsedResponse.positives,
       negatives: parsedResponse.negatives,
       reportUrl: reportUrl,
+      ratingGeneratedAt: ratingGeneratedAt.toISOString(),
     });
 
     // return res.status(200).json({ predictedUrl, reportUrl, reportContent });

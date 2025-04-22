@@ -1,3 +1,12 @@
+# AfterHoursIQ
+
+### AI-powered trading assistant built with Next.js, TypeScript, and OpenAI that analyzes quarterly earnings reports and assigns a rating from 1 to 5 (1 = short, 5 = buy) to help traders make fast, informed after-hours trading decisions. Users provide the upcoming quarter and year, the previous quarter’s press release URL, and the investor relations earnings page. 
+
+### The system predicts the next earnings report URL by adjusting the quarter and year, then monitors the earnings page after market close. Once a new report is detected (using fuzzy URL matching), the content is extracted and passed to OpenAI, which parses the report, identifies key financial metrics, summarizes the results, and generates a predictive rating. 
+
+### This isn’t just a technical solution — it’s built with a trader’s mindset. Every decision in AfterHoursIQ, from report detection to prompt engineering, is designed to deliver fast, accurate, and actionable signals that give traders an edge in the critical minutes after earnings drop. We're not building a backend to explain earnings — we’re building a system to front-run the market and make money off the move.
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
 
 ## Getting Started

@@ -49,15 +49,15 @@ const Alert: React.FC<AlertProps> = ({ rating, statusCode }) => {
   } else if (rating > 3) {
     bgGradient = 'bg-gradient-to-b from-[#1e3d26] to-[#2a6d34]';
     borderColor = 'border-green-500';
-    alertMessage = `Signal Ready: ${rating}`;
+    alertMessage = `Rating Ready: ${rating}`;
   } else if (rating === 3) {
     bgGradient = 'bg-gradient-to-b from-[#8b6f2f] to-[#b28d3b]';
     borderColor = 'border-yellow-500';
-    alertMessage = `Signal Ready: ${rating}`;
+    alertMessage = `Rating Ready: ${rating}`;
   } else {
     bgGradient = 'bg-gradient-to-b from-[#3a1d32] to-[#47243f]';
     borderColor = 'border-red-500';
-    alertMessage = `Signal Ready: ${rating}`;
+    alertMessage = `Rating Ready: ${rating}`;
   }
 
   return (

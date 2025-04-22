@@ -12,25 +12,30 @@ export function predictUpcomingQuarterUrl(
   targetQuarter: number,
   targetYear: string
 ): string {
+  console.log('predictUpcomingQuarterUrl ', targetQuarter, targetYear);
   const url = new URL(currentUrl.toLowerCase());
   const [domain, ...pathParts] = url.pathname.split('/').filter(Boolean);
 
   const comboPatterns = [
     {
       regex: /(fy)?(\d{2,4})[-_]?q([1-4])/gi,
-      replace: () => `${targetYear}q${targetQuarter}`,
+      replace: (_: string, fy, year) =>
+        `${fy || ''}${year.length === 4 ? `20${targetYear}` : targetYear}q${targetQuarter}`,
     },
     {
       regex: /q([1-4])[-_]?(fy)?(\d{2,4})/gi,
-      replace: () => `q${targetQuarter}fy${targetYear}`,
+      replace: (_: string, q, fy, year) =>
+        `q${targetQuarter}${fy || ''}${year.length === 4 ? `20${targetYear}` : targetYear}`,
     },
     {
       regex: /(\d{4})q([1-4])/gi,
-      replace: () => `${targetYear}q${targetQuarter}`,
+      replace: (_: string, year) =>
+        `${year.length === 4 ? `20${targetYear}` : targetYear}q${targetQuarter}`,
     },
     {
       regex: /q([1-4])[-_](\d{2,4})/gi,
-      replace: () => `q${targetQuarter}-${targetYear}`,
+      replace: (_: string, q, year) =>
+        `q${targetQuarter}-${year.length === 4 ? `20${targetYear}` : targetYear}`,
     },
   ];
 
@@ -51,15 +56,16 @@ export function predictUpcomingQuarterUrl(
   const yearPatterns = [
     {
       regex: /\b(\d{2}|\d{4})\b/g,
-      replace: (_: string, yearPart: string) =>
-        yearPart.length === 4 && targetYear.length === 2 ? `20${targetYear}` : targetYear,
+      replace: (_: string, yearPart: string) => {
+        return yearPart.length === 4 ? `20${targetYear}` : targetYear;
+      },
     },
   ];
 
   const newPathParts = pathParts.map((part) => {
-    let updatedPart = replacePattern(part, comboPatterns);
+    let updatedPart = replacePattern(part, yearPatterns);
+    updatedPart = replacePattern(updatedPart, comboPatterns);
     updatedPart = replacePattern(updatedPart, quarterPatterns);
-    updatedPart = replacePattern(updatedPart, yearPatterns);
     return updatedPart;
   });
 

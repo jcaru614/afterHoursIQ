@@ -14,7 +14,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { FiLoader, FiExternalLink } from 'react-icons/fi';
 import { setReportData, setStatusCode } from '@/redux/slice';
 import { RootState } from '@/redux/store';
-import { getFgiColor, getVixColor, extractDomain } from '@/utils/clientSide';
+import { getFgiColor, getVixColor, extractDomain, formatTime } from '@/utils/clientSide';
 
 export default function Home() {
   const dispatch = useDispatch();
@@ -45,7 +45,7 @@ export default function Home() {
     year.toString().slice(-2)
   );
 
-  const { rating, positives, negatives, reportUrl, statusCode } = useSelector(
+  const { rating, positives, negatives, reportUrl, statusCode, ratingGeneratedAt } = useSelector(
     (state: RootState) => state.slice
   );
 
@@ -378,7 +378,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative rounded-xl flex justify-center items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4">
+          <div className="relative rounded-xl flex flex-col items-center bg-gradient-to-r from-[#0A0922] to-[#1D0F41] overflow-hidden p-4 space-y-2">
             {reportUrl && (
               <a
                 href={reportUrl}
@@ -390,7 +390,15 @@ export default function Home() {
                 <FiExternalLink className="w-4 h-4" />
               </a>
             )}
+
             <RatingMeter score={rating} />
+
+            {ratingGeneratedAt && (
+              <p className="text-sm text-white opacity-80 mt-2">
+                Rating generated at{' '}
+                <span className="font-semibold">{formatTime(ratingGeneratedAt)}</span>
+              </p>
+            )}
           </div>
         </div>
 

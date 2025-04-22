@@ -6,6 +6,7 @@ interface SliceState {
   negatives: Array<string> | null;
   statusCode: number | null;
   reportUrl: string | null;
+  ratingGeneratedAt: string | null;
 }
 
 const initialState: SliceState = {
@@ -14,6 +15,7 @@ const initialState: SliceState = {
   negatives: null,
   statusCode: null,
   reportUrl: null,
+  ratingGeneratedAt: null,
 };
 
 const slice = createSlice({
@@ -27,12 +29,14 @@ const slice = createSlice({
         positives: string[];
         negatives: string[];
         reportUrl: string;
+        ratingGeneratedAt: string;
       }>
     ) {
       state.rating = action.payload.rating;
       state.positives = action.payload.positives;
       state.negatives = action.payload.negatives;
       state.reportUrl = action.payload.reportUrl;
+      state.ratingGeneratedAt = action.payload.ratingGeneratedAt;
     },
     setStatusCode(state, action: PayloadAction<number>) {
       state.statusCode = action.payload;

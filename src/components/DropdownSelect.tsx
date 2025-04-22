@@ -16,6 +16,7 @@ const DropdownSelect: React.FC<DropdownSelectProps> = ({
   placeholder,
   className = '',
 }) => {
+  console.log('value ', value);
   return (
     <div className="w-full">
       {label && <label className="block mb-1 text-white text-sm">{label}</label>}
